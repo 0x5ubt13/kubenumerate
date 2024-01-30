@@ -14,34 +14,33 @@ import time
 
 
 class Kubenumerate():
-    """ A class to automatically launch and parse several Kubernetes security auditing tools
-        by 0x5ubt13
-        PRs: https://github.com/0x5ubt13/
+    """ A class to automatically launch and parse several Kubernetes security auditing tools, by Subtle
+        PRs: https://github.com/0x5ubt13/kubenumerate
     """
 
-    def __init__(self, automount=False, cis=False, date=datetime.datetime.now().strftime("%b%y"), deprecated_api=False, excel_file="", hardened=True, kubeaudit_file="", kube_bench_file="", kubectl_file="",
-                 kubectl_path=f"{os.getcwd()}/kubenumerate_out/kubectl_output/", limits=True, out_path=f"{os.getcwd()}/kubenumerate_out/", pkl_lists_recovery_file="", pods="", privesc=False, privileged=False, requisites=True, trivy_file="", vuln_image=False):
+    def __init__(self, automount=False, cis=False, date=datetime.datetime.now().strftime("%b%y"), depr_api=False, excel_file="", hardened=True, kubeaudit_file="", kube_bench_file="", kubectl_file="",
+                 kubectl_path=f"{os.getcwd()}/kubenumerate_out/kubectl_output/", limits=True, out_path=f"{os.getcwd()}/kubenumerate_out/", pkl_recovery="", pods="", privesc=False, privileged=False, requisites=True, trivy_file="", vuln_image=False):
         """ Initialize attributes """
 
-        self.automount = automount
-        self.cis_detected = cis
-        self.date = date
-        self.deprecated_api_checked = deprecated_api
-        self.excel_file = excel_file
-        self.hardened = hardened
-        self.vuln_image = vuln_image
-        self.kubeaudit_file = kubeaudit_file
+        self.automount       = automount
+        self.cis_detected    = cis
+        self.date            = date
+        self.depr_api        = depr_api
+        self.excel_file      = excel_file
+        self.hardened        = hardened
+        self.vuln_image      = vuln_image
+        self.kubeaudit_file  = kubeaudit_file
         self.kube_bench_file = kube_bench_file
-        self.kubectl_file = kubectl_file
-        self.kubectl_path = kubectl_path
-        self.limits_set = limits
-        self.out_path = out_path
-        self.pods = pods
-        self.privesc_set = privesc
+        self.kubectl_file    = kubectl_file
+        self.kubectl_path    = kubectl_path
+        self.limits_set      = limits
+        self.out_path        = out_path
+        self.pods            = pods
+        self.privesc_set     = privesc
         self.privileged_flag = privileged
-        self.requisites = requisites
-        self.trivy_file = trivy_file
-        self.pkl_lists_recovery_file = pkl_lists_recovery_file
+        self.requisites      = requisites
+        self.trivy_file      = trivy_file
+        self.pkl_recovery    = pkl_recovery
 
     def parse_args(self):
         """ Parse args and return them """
@@ -245,11 +244,11 @@ class Kubenumerate():
     def Run(self):
         """ Class main method. Launch kubeaudit, kube-bench and trivy and parse them """
 
-        # Make sure all necessary software is installed
-        self.check_requisites()
-
         # Parse args
         args = self.parse_args()
+
+        # Make sure all necessary software is installed
+        self.check_requisites()
 
         # Check out path exists and create it if not
         print(f'{self.cyan_text("[*]")} ----- Running initial checks -----')
@@ -291,7 +290,7 @@ class Kubenumerate():
                     self.apparmor(kubeaudit_df, writer)
                     self.asat(kubeaudit_df, writer)
                     self.caps(kubeaudit_df, writer)
-                    self.deprecated_api(kubeaudit_df, writer)
+                    self.dep_api(kubeaudit_df, writer)
                     self.hostns(kubeaudit_df, writer)
                     self.image(kubeaudit_df, writer)  # TODO
                     self.limits(kubeaudit_df, writer)
@@ -501,12 +500,12 @@ class Kubenumerate():
             self.hardened = False
         except: KeyError
 
-    def deprecated_api(self, df, writer):
+    def dep_api(self, df, writer):
         # Deprecated API used
         try:
-            df_deprecated_api_used = df[df['AuditResultName']
+            df_dep_api_used = df[df['AuditResultName']
                                         == 'DeprecatedAPIUsed']
-            df_deprecated_api_used = df_deprecated_api_used[["ResourceName",
+            df_dep_api_used = df_dep_api_used[["ResourceName",
                                                              "ResourceKind",
                                                              "IntroducedMajor",
                                                              "IntroducedMinor",
@@ -518,14 +517,14 @@ class Kubenumerate():
                                                              "ReplacementGroup",
                                                              "ReplacementKind",
                                                              "msg"]]
-            df_deprecated_api_used.to_excel(
+            df_dep_api_used.to_excel(
                 writer, sheet_name="Deprecated API Used", index=False)
-            self.deprecated_api_checked = True
+            self.depr_api = True
         except KeyError:
             try:
-                df_deprecated_api_used = df[df['AuditResultName']
+                df_dep_api_used = df[df['AuditResultName']
                                             == 'DeprecatedAPIUsed']
-                df_deprecated_api_used = df_deprecated_api_used[["ResourceName",
+                df_dep_api_used = df_dep_api_used[["ResourceName",
                                                                  "ResourceKind",
                                                                  "IntroducedMajor",
                                                                  "IntroducedMinor",
@@ -535,9 +534,9 @@ class Kubenumerate():
                                                                  "RemovedMinor",
                                                                  "ResourceApiVersion",
                                                                  "msg"]]
-                df_deprecated_api_used.to_excel(
+                df_dep_api_used.to_excel(
                     writer, sheet_name="Deprecated API Used", index=False)
-                self.deprecated_api_checked = True
+                self.dprc_api = True
             except: KeyError
 
     def hostns(self, df, writer):
@@ -757,11 +756,11 @@ class Kubenumerate():
     def recover_from_aborted_scan(self):
         """ Detect if there are any aborted lists """
 
-        if os.path.isfile(self.pkl_lists_recovery_file) and os.path.getsize(
-                self.pkl_lists_recovery_file) > 0:
+        if os.path.isfile(self.pkl_recovery) and os.path.getsize(
+                self.pkl_recovery) > 0:
             
             # File exists and has content. Restore it
-            with open(self.pkl_lists_recovery_file, "rb") as recovery_file:
+            with open(self.pkl_recovery, "rb") as recovery_file:
                 data = pickle.load(recovery_file)
                 scanned_images, vuln_images, vuln_containers, iteration = data
                 print(f'{self.cyan_text("[*]")} Restoring data from previous interrupted scan: jumping to pod #{iteration}')
@@ -801,8 +800,7 @@ class Kubenumerate():
         """
 
         # TODO: Would it be quicker to first identify vuln images and then create the dataframe looking for containers which have the vuln images?
-        # TODO: refactor function to use dicts instead of lists to make it more
-        # efficient
+        # TODO: refactor function to use dicts instead of lists to make it more efficient
 
         # Check if no pods were found
         pods = self.pods.get("items", [])
@@ -812,11 +810,11 @@ class Kubenumerate():
             return
 
         # Vars needed
-        self.pkl_lists_recovery_file = f"{self.out_path}.kubenumerate_trivy_log_lists.pkl"
+        self.pkl_recovery = f"{self.out_path}.kubenumerate_trivy_log_lists.pkl"
 
         # Create recovery file if doesn't exist
-        if not os.path.exists(self.pkl_lists_recovery_file):
-            Path.touch(self.pkl_lists_recovery_file, 0o644)
+        if not os.path.exists(self.pkl_recovery):
+            Path.touch(self.pkl_recovery, 0o644)
 
         print(f'{self.yellow_text("[!]")} Launching trivy to scan every unique container image for vulns. This might take a while, please wait...\n{self.yellow_text("[!]")} Known issues: if stuck at 0, run: \n\ttrivy i --download-java-db-only')
         print(f'{self.cyan_text("[*]")} Scanning {self.yellow_text(f"{total_pods}")} pods detected...')
@@ -832,7 +830,7 @@ class Kubenumerate():
         for i, pod in enumerate(pods):
             # Check to see if this is a repeating test
             if iteration == total_pods - 1:
-                print(f'{self.red_text("[-]")} It looks like this test was already run in the past.\nIf you want to redo the assessment, select a different output folder, or run\n\t{self.yellow_text(f"rm {self.pkl_lists_recovery_file}")}')
+                print(f'{self.red_text("[-]")} It looks like this test was already run in the past.\nIf you want to redo the assessment, select a different output folder, or run\n\t{self.yellow_text(f"rm {self.pkl_recovery}")}')
                 break
 
             # Skip to the recovered point
@@ -842,7 +840,7 @@ class Kubenumerate():
             # Save progress with every new loop in case of needing to recover
             # from fatal error
             data = (scanned_images, vuln_images, vuln_containers, i)
-            with open(self.pkl_lists_recovery_file, "r+b") as recovery_file:
+            with open(self.pkl_recovery, "r+b") as recovery_file:
                 pickle.dump(data, recovery_file)
 
             # Check if the image has already been scanned
@@ -926,7 +924,7 @@ class Kubenumerate():
                         except KeyError:
                             pass
             except KeyboardInterrupt:
-                print(f'\n{self.cyan_text("[*]")} Ctrl+c detected. Recovery file saved to {self.cyan_text(self.pkl_lists_recovery_file)}...')
+                print(f'\n{self.cyan_text("[*]")} Ctrl+c detected. Recovery file saved to {self.cyan_text(self.pkl_recovery)}...')
                 sys.exit(99)
             # except json.decoder.JSONDecodeError or ValueError as e:
                 # print(f"Error: {str(e)}")
@@ -983,7 +981,7 @@ class Kubenumerate():
             print(f'\t{self.red_text("[!]")} CIS Benchmarks')
 
         # #TODO:to determine
-        # self.deprecated_api_checked
+        # self.depr_api
 
         # CPU usage
         if not self.limits_set:
