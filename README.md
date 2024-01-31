@@ -27,9 +27,10 @@ Enter kubenumerate!
       --trivy-file TRIVY_FILE, -f TRIVY_FILE
                             Run trivy from a pods dump in json instead of running kubectl using your kubeconfig file
       --output OUTPUT, -o OUTPUT
-                            Select a different folder for all the output (default ./kubenumerate/)
+                            Select a different folder for all the output (default ./kubenumerate_out/)
 
 ## To Do
 
+- [ ] Clear all TODOs
 - [ ] Containerise
 - [ ] Add verbose flag

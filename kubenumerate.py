@@ -18,29 +18,30 @@ class Kubenumerate():
         PRs: https://github.com/0x5ubt13/kubenumerate
     """
 
-    def __init__(self, automount=False, cis=False, date=datetime.datetime.now().strftime("%b%y"), depr_api=False, excel_file="", hardened=True, kubeaudit_file="", kube_bench_file="", kubectl_file="",
-                 kubectl_path=f"{os.getcwd()}/kubenumerate_out/kubectl_output/", limits=True, out_path=f"{os.getcwd()}/kubenumerate_out/", pkl_recovery="", pods="", privesc=False, privileged=False, requisites=True, trivy_file="", vuln_image=False):
+    def __init__(self, automount=False, cis=False, date=datetime.datetime.now().strftime("%b%y"), depr_api=False, excel_file="", hardened=True, kubeaudit_file="", kube_bench_file="", kubectl_pods_file="",
+                 kubectl_path=f"{os.getcwd()}/kubenumerate_out/kubectl_output/", limits=True, out_path=f"{os.getcwd()}/kubenumerate_out/", pkl_recovery="", pods="", privesc=False, privileged=False, requisites=True, trivy_file="", verbosity=1, vuln_image=False):
         """ Initialize attributes """
 
-        self.automount       = automount
-        self.cis_detected    = cis
-        self.date            = date
-        self.depr_api        = depr_api
-        self.excel_file      = excel_file
-        self.hardened        = hardened
-        self.vuln_image      = vuln_image
-        self.kubeaudit_file  = kubeaudit_file
-        self.kube_bench_file = kube_bench_file
-        self.kubectl_file    = kubectl_file
-        self.kubectl_path    = kubectl_path
-        self.limits_set      = limits
-        self.out_path        = out_path
-        self.pods            = pods
-        self.privesc_set     = privesc
-        self.privileged_flag = privileged
-        self.requisites      = requisites
-        self.trivy_file      = trivy_file
-        self.pkl_recovery    = pkl_recovery
+        self.automount         = automount
+        self.cis_detected      = cis
+        self.date              = date
+        self.depr_api          = depr_api
+        self.excel_file        = excel_file
+        self.hardened          = hardened
+        self.kubeaudit_file    = kubeaudit_file
+        self.kube_bench_file   = kube_bench_file
+        self.kubectl_path      = kubectl_path
+        self.kubectl_pods_file = kubectl_pods_file
+        self.limits_set        = limits
+        self.out_path          = out_path
+        self.pods              = pods
+        self.privesc_set       = privesc
+        self.privileged_flag   = privileged
+        self.requisites        = requisites
+        self.trivy_file        = trivy_file
+        self.pkl_recovery      = pkl_recovery
+        self.vuln_image        = vuln_image
+        self.verbosity         = verbosity # TODO finish implementing it
 
     def parse_args(self):
         """ Parse args and return them """
@@ -63,13 +64,14 @@ class Kubenumerate():
         parser.add_argument(
             '--output',
             '-o',
-            help="Select a different folder for all the output (default ./kubenumerate/)",
+            help="Select a different folder for all the output (default ./kubenumerate_out/)",
             default=f"{os.getcwd()}/kubenumerate_out/")
+        # TODO: add verbose/quiet flags
 
         return parser.parse_args()
 
     def check_requisites(self):
-        """ Check for kubeaudit, kube-bench and trivy """
+        """ Check for kubeaudit, kube-bench and trivy. Exit if they are not present in the system """
 
         if not shutil.which("kubeaudit"):
             print(f'{self.red_text("[-]")} Please install kubeaudit: https://github.com/Shopify/kubeaudit')
@@ -84,6 +86,7 @@ class Kubenumerate():
             print(f'{self.red_text("[-]")} Please install trivy: https://github.com/aquasecurity/trivy')
             self.requisites = False
         if not self.requisites:
+            #TODO: offer the user installing them for absolute laziness' sake
             sys.exit(2)
 
     def parse_excel_filename(self, args):
@@ -118,6 +121,7 @@ class Kubenumerate():
 
     def launch_kube_bench(self):
         """ Check whether a previous kube-bench json file already exists. If not, launch kube-bench """
+
         # Double-check if a file already exists
         self.kube_bench_file = f"{self.out_path}kube_bench_output.json"
         if os.path.exists(self.kube_bench_file):
@@ -147,37 +151,18 @@ class Kubenumerate():
         if args.trivy_file is not None:
             self.trivy_file = f"{os.getcwd()}/{args.trivy_file}"
             if os.path.exists(self.trivy_file):
-                print(f'{self.green_text("[+]")} Using passed argument "{self.cyan_text(self.trivy_file)}" file as input file to avoid sending unnecesary requests to the client\'s cluster.')
+                print(f'{self.green_text("[+]")} Using passed argument "{self.cyan_text(self.trivy_file)}" file as input file for Trivy to avoid sending unnecesary requests to the cluster.')
                 with open(self.trivy_file, "r") as f:
                     self.pods = json.loads(f.read())
                 return
 
-        # TODO: Refactor this, not needed anymore. self.pods can come out of the {self.kubectl_path}pod(s).json result
-        # Double-check if a file already exists
-        self.kubectl_file = f"{self.kubectl_path}kubectl_all_pods.json"
-        if os.path.exists(self.kubectl_file):
-            print(f'{self.green_text("[+]")} Using existing "{self.cyan_text(self.kubectl_file)}" json file as input file to avoid sending unnecesary requests to the client\'s cluster.')
-            print(f'{self.yellow_text("[!]")} If you want a fresh pods output file, run the following command and run this program again:\n\t{self.yellow_text(f"rm {self.kubectl_file}")}')
-            with open(self.kubectl_file, "r") as f:
+        # Use a freshly extracted pods file
+        self.kubectl_pods_file = f"{self.kubectl_path}pods.json"
+        if os.path.exists(self.kubectl_pods_file):
+            # TODO: add verbosity controls here
+            print(f'{self.green_text("[+]")} Using "{self.cyan_text(self.kubectl_pods_file)}" file as input file for Trivy to avoid sending unnecesary requests to the cluster.')
+            with open(self.kubectl_pods_file, "r") as f:
                 self.pods = json.loads(f.read())
-            return
-
-        # TODO: Refactor this, not needed anymore. self.pods can come out of
-        # the {self.kubectl_path}pod(s).json result
-        print(f'{self.cyan_text("[*]")} Running kubectl, please wait...')
-        # Get all pods in the cluster along with namespace and pod name
-        command = "kubectl get po -A -o json"
-        process = subprocess.Popen(
-            command.split(" "),
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE)
-        stdout, stderr = process.communicate()
-
-        # Save the output to a file
-        with open(self.kubectl_file, "w") as output_kubectl_file:
-            output_kubectl_file.write(stdout.decode("utf-8"))
-
-        self.pods = json.loads(stdout)
 
     def kubectl_get_all_yaml_and_json(self):
         """ Gather all output from kubectl in both json and yaml """
@@ -342,7 +327,7 @@ class Kubenumerate():
 
         # TODO: Add check to ensure kubeaudit is in the path
         # TODO: Add check for stderr
-        command = "kubeaudit all -p json"
+        command = "kubeaudit all -p json" # TODO change this so instead of going over all at once it goes one by one over everything
         process = subprocess.Popen(
             command.split(" "),
             stdout=subprocess.PIPE,
@@ -781,6 +766,7 @@ class Kubenumerate():
                 stderr=subprocess.PIPE,
                 timeout=20)
         except subprocess.TimeoutExpired:
+            # Return "error" string that will be used to abort further checks of the output
             return "error"
 
         # Process completed, get the output
