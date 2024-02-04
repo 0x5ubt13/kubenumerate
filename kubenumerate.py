@@ -346,7 +346,6 @@ class Kubenumerate():
         # TODO: add verbosity flag
         print(f'{self.cyan_text("[*]")} Running kube-bench, please wait...')
 
-        # TODO: Add check to ensure kube-bench is in the path
         # TODO: Add check for stderr
         command = "kube-bench run --targets=node,policies --json"
         process = subprocess.Popen(
