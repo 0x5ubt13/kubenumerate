@@ -752,6 +752,22 @@ class Kubenumerate():
 
         # Otherwise, return new lists
         return [], [], [], 0, False
+    
+    def recover_from_aborted_scan_dict(self):
+        """ Detect if there are any aborted lists """
+
+        if os.path.isfile(self.pkl_recovery) and os.path.getsize(
+                self.pkl_recovery) > 0:
+            
+            # File exists and has content. Restore it
+            with open(self.pkl_recovery, "rb") as recovery_file:
+                data = pickle.load(recovery_file)
+                scanned_images, vuln_images, vuln_containers, iteration = data
+                print(f'{self.cyan_text("[*]")} Restoring data from previous interrupted scan: jumping to pod #{iteration}')
+            return images, iteration, True
+
+        # Otherwise, return new vars
+        return {}, 0, False
 
     def run_trivy(self, image_name):
         """ Run Trivy against the specified image """
@@ -854,8 +870,7 @@ class Kubenumerate():
                         if already_found_vulns:
                             # print("Debug: already_found_vulns")
                             try:
-                                previous_image = [
-                                    img for img in vuln_containers if img[0] == image_name]
+                                previous_image = [img for img in vuln_containers if img[0] == image_name]
                                 new_image = [
                                     image_name,
                                     pod_name,
@@ -939,6 +954,183 @@ class Kubenumerate():
 
         else:
             print(f'{self.green_text("[+]")} No images found containing any high- or critical-risk issues')
+
+    def init_new_image(image_name, pod_name, container_name, namespace, crits, highs):
+        """ Returns empty dict containing new image """
+
+        return {
+
+        }
+
+
+    def trivy_parser_dict(self, writer):
+        """
+        Run trivy against every image in every container and save output to excel file.
+        The function will recover from any crashed instance
+
+        Vulnerable Images dict structure reference:
+        images_dictionary = {
+            "vulnerable": bool,
+            image_name = {
+                "affected_pods": {
+                    "pod_name": pod_name,
+                    "container_name": container_name,
+                    "namespace": namespace,
+                },
+            "crits": crits,
+            "highs": highs,
+            }
+        }
+        """
+
+        """ Note:
+        How to check manually all images. Commands:
+        Unique image names: `cat kubectl_all_pods.json | grep '"image":' | sort -u | tr -d '", ' | cut -d ":" -f2,3`
+        Total unique count: `cat kubectl_all_pods.json | grep '"image":' | sort -u | tr -d '", ' | cut -d ":" -f2,3 | wc -l | xargs echo "Total images:"`
+        """
+
+        # TODO: Would it be quicker to first identify vuln images and then create the dataframe looking for containers which have the vuln images?
+        # TODO: refactoring function to use dicts instead of lists to make it more efficient
+
+        # Check if no pods were found
+        pods = self.pods.get("items", [])
+        total_pods = len(pods)
+        if total_pods == 0:
+            print(f'{self.red_text("[-]")} No pods detected, aborting...\n{self.red_text("[-]")} Please check the permissions of your current role with the following command:\n\t{self.yellow_text("kubectl auth can-i --list")}')
+            return
+
+        # Vars needed
+        self.pkl_recovery = f"{self.out_path}.kubenumerate_trivy_log_lists.pkl"
+
+        # Create recovery file if doesn't exist
+        if not os.path.exists(self.pkl_recovery):
+            Path.touch(self.pkl_recovery, 0o644)
+
+        print(f'{self.yellow_text("[!]")} Launching trivy to scan every unique container image for vulns. This might take a while, please wait...\n{self.yellow_text("[!]")} Known issues: if stuck at 0, run: \n\ttrivy i --download-java-db-only')
+        print(f'{self.cyan_text("[*]")} Scanning {self.yellow_text(f"{total_pods}")} pods detected...')
+
+        # Recover from aborted scan, if needed
+        images, iteration, recovered_file = self.recover_from_aborted_scan_dict()
+
+        # Start progress bar
+        start = time.time()
+        self.show_status_bar(iteration, total_pods, start)
+
+        # Main loop to go through all images
+        for i, pod in enumerate(pods):
+            # Check to see if this is a repeating test
+            if iteration == total_pods - 1:
+                print(f'{self.red_text("[-]")} It looks like this test was already run in the past.\nIf you want to redo the assessment, select a different output folder, or run\n\t{self.yellow_text(f"rm {self.pkl_recovery}")}')
+                break
+
+            # Skip to the recovered point
+            if recovered_file and i < iteration:
+                continue
+
+            # Save progress with every new loop in case of needing to recover
+            # from fatal error
+            data = (images, i)
+            with open(self.pkl_recovery, "r+b") as recovery_file:
+                pickle.dump(data, recovery_file)
+
+            # Check if the image has already been scanned
+            try:
+                namespace = pod["metadata"]["namespace"]
+                pod_name = pod["metadata"]["name"]
+                containers = pod.get("spec", {}).get("containers", [])
+                for container in containers:
+                    image_name = container.get("image")
+                    container_name = container.get("name")
+                    if image_name:
+                        # Don't scan the same image twice
+                        already_checked, already_found_vulns = False, False
+                        if image_name in scanned_images:
+                            already_checked = True
+                            if vuln_images.get(image_name) is not None:
+                                already_found_vulns = True
+
+                        # Not vuln but image already checked, skip it
+                        if already_checked and not already_found_vulns:
+                            # print("Debug: already checked. Skipping")
+                            continue
+
+                        # Vuln image found duplicated, add pod info to vuln list and skip it
+                        if already_found_vulns:
+                            # print("Debug: already_found_vulns")
+                            vuln_images[image_name]["affected_pods"].append(
+                                {
+                                    "pod_name": pod_name, 
+                                    "container_name": container_name, 
+                                    "namespace": namespace,
+                                }
+                            )
+                            continue
+
+                        # Proceed scanning the image
+                        highs, crits = 0, 0
+                        try:
+                            # print(f"Scanning image {image_name}") # Maybe
+                            # activate this with a verbose flag?
+                            vulnerabilities = self.run_trivy(image_name)
+                            if vulnerabilities == "error":
+                                continue
+                            for result in vulnerabilities.get("Results", []):
+                                for vulnerability in result.get(
+                                        'Vulnerabilities', []):
+                                    if "HIGH" in vulnerability.get('Severity'):
+                                        highs += 1
+
+                                    if "CRITICAL" in vulnerability.get(
+                                            'Severity'):
+                                        crits += 1
+
+                            if highs > 0 or crits > 0:       
+                                # Register the new vulnerable image                       
+                                images[image_name] = {
+                                    "vulnerable": True,
+                                    "highs": highs,
+                                    "crits": crits,
+                                    "affected_pods": [{"pod_name": pod_name, "container_name": container_name, "namespace": namespace}]
+                                }
+                            else:
+                                images[image_name]["vulnerable"] = False
+                        # except subprocess.CalledProcessError as e:
+                            # print(f"Error scanning trivy: {str(e)}")
+                        # don't Ignore errors for now
+                        except Exception as e:
+                            print("ERROR!:", e)
+            except KeyboardInterrupt:
+                print(f'\n{self.cyan_text("[*]")} Ctrl+c detected. Recovery file saved to {self.cyan_text(self.pkl_recovery)}...')
+                sys.exit(99)
+            # except json.decoder.JSONDecodeError or ValueError as e:
+                # print(f"Error: {str(e)}")
+            except KeyError:
+                pass
+
+            self.show_status_bar(i + 1, total_pods, start)
+        print("\n", flush=True, file=sys.stdout)
+
+        # print("DEBUG: vuln_images:", vuln_containers)
+        if len(vuln_containers) != 0:
+            self.vuln_image = True
+            df = pd.DataFrame(vuln_containers)
+            df.columns = [
+                "Image",
+                "Pod",
+                "Container",
+                "CRIT",
+                "HIGH",
+                "Namespace"]
+            df.sort_values(by='Image', ascending=True, inplace=True)
+            df.to_excel(
+                writer,
+                sheet_name="Vulnerable Images",
+                index=False,
+                freeze_panes=(1,0))
+
+        else:
+            print(f'{self.green_text("[+]")} No images found containing any high- or critical-risk issues')
+
 
     def raise_issues(self):
         """ Suggest the consultant what issues might need raising """
