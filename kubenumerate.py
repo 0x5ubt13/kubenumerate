@@ -3,6 +3,7 @@
 import argparse
 import datetime
 import json
+import multiprocessing
 import os
 import pandas as pd
 from pathlib import Path
@@ -297,6 +298,7 @@ class Kubenumerate():
 
                     # Run trivy methods
                     self.trivy_parser(writer)
+                    # self.trivy_parser_dict(self.trivy_extractor(), writer=writer) # Attempt to make it more efficient; to test
                     print(f'{self.green_text("[+]")} Trivy successfuly parsed')
 
         print(f'{self.green_text("[+]")} Done! All output successfully saved to {self.cyan_text(self.excel_file)}')
@@ -762,7 +764,7 @@ class Kubenumerate():
             # File exists and has content. Restore it
             with open(self.pkl_recovery, "rb") as recovery_file:
                 data = pickle.load(recovery_file)
-                scanned_images, vuln_images, vuln_containers, iteration = data
+                images, iteration = data
                 print(f'{self.cyan_text("[*]")} Restoring data from previous interrupted scan: jumping to pod #{iteration}')
             return images, iteration, True
 
@@ -951,46 +953,91 @@ class Kubenumerate():
                 sheet_name="Vulnerable Images",
                 index=False,
                 freeze_panes=(1,0))
-
         else:
             print(f'{self.green_text("[+]")} No images found containing any high- or critical-risk issues')
 
-    def init_new_image(image_name, pod_name, container_name, namespace, crits, highs):
-        """ Returns empty dict containing new image """
+    def trivy_parser_dict(self, images_dict, writer):
+        """ Parse the extracted dictionary to excel"""
 
-        return {
+        def count_vulnerable_images_and_pods(images_dictionary):
+            """ Nested function that uses multiprocessing to loop through the dictionary """
 
-        }
+            num_vulnerable_images = 0
+            num_vulnerable_pods = 0
 
+            def count_vulnerable_pods(image_data):
+                nonlocal num_vulnerable_pods
+                if image_data["vulnerable"]:
+                    num_vulnerable_pods += len(image_data["affected_pods"])
 
-    def trivy_parser_dict(self, writer):
+            with multiprocessing.Pool() as pool:
+                results = pool.map_async(count_vulnerable_pods, images_dictionary.values())
+                print(f'results: {results}')
+                num_vulnerable_images = sum(1 for image_data in images_dictionary.values() if image_data["vulnerable"])
+
+            return num_vulnerable_images, num_vulnerable_pods
+
+        num_vulnerable_images, num_vulnerable_pods = count_vulnerable_images_and_pods(images_dict)
+        print(f"There are {num_vulnerable_images} vulnerable images and {num_vulnerable_pods} vulnerable pods.")
+
+        # Loop over the dict's items and categorise them
+        vuln_containers, export = [], False
+        for image_name, image_data in images_dict.items():
+            if image_data["vulnerable"]:
+                export = True
+                for pod_data in image_data["affected_pods"]:
+                    vuln_containers.append([
+                        image_name,                 # Column Image
+                        pod_data["pod_name"],       # Column Pod
+                        pod_data["container_name"], # Column Container
+                        image_data["crits"],        # Column CRITs
+                        image_data["highs"],        # Column HIGHs
+                        pod_data["namespace"],      # Column Namespace
+                    ])
+
+        if export:
+            df = pd.DataFrame(vuln_containers, columns=[
+                "Image",
+                "Pod",
+                "Container",
+                "CRITs",
+                "HIGHs",
+                "Namespace",
+            ])
+            df.sort_values(by='Image', ascending=True, inplace=True)
+            df.to_excel(writer, sheet_name="Vulnerable Images", index=False, freeze_panes=(1,0))
+
+    def trivy_extractor(self):
         """
         Run trivy against every image in every container and save output to excel file.
         The function will recover from any crashed instance
-
         Vulnerable Images dict structure reference:
         images_dictionary = {
-            "vulnerable": bool,
-            image_name = {
-                "affected_pods": {
-                    "pod_name": pod_name,
-                    "container_name": container_name,
-                    "namespace": namespace,
-                },
-            "crits": crits,
-            "highs": highs,
+            image_name (string): {
+                "vulnerable": bool,
+                "crits": int,
+                "highs": int,
+                "affected_pods": [
+                    {
+                        "pod_name": "pod_1" (string),
+                        "container_name": "container_1" (string),
+                        "namespace": "ns_1" (string),
+                    },
+                    {
+                        "pod_name": "pod_2" (string),
+                        "container_name": "container_2" (string),
+                        "namespace": "ns_2" (string),
+                    },
+                ],
             }
         }
         """
 
         """ Note:
-        How to check manually all images. Commands:
+        How to check manually all images for debugging. Commands:
         Unique image names: `cat kubectl_all_pods.json | grep '"image":' | sort -u | tr -d '", ' | cut -d ":" -f2,3`
         Total unique count: `cat kubectl_all_pods.json | grep '"image":' | sort -u | tr -d '", ' | cut -d ":" -f2,3 | wc -l | xargs echo "Total images:"`
         """
-
-        # TODO: Would it be quicker to first identify vuln images and then create the dataframe looking for containers which have the vuln images?
-        # TODO: refactoring function to use dicts instead of lists to make it more efficient
 
         # Check if no pods were found
         pods = self.pods.get("items", [])
@@ -1044,9 +1091,9 @@ class Kubenumerate():
                     if image_name:
                         # Don't scan the same image twice
                         already_checked, already_found_vulns = False, False
-                        if image_name in scanned_images:
+                        if image_name in images:
                             already_checked = True
-                            if vuln_images.get(image_name) is not None:
+                            if images[image_name]["vulnerable"]:
                                 already_found_vulns = True
 
                         # Not vuln but image already checked, skip it
@@ -1057,7 +1104,7 @@ class Kubenumerate():
                         # Vuln image found duplicated, add pod info to vuln list and skip it
                         if already_found_vulns:
                             # print("Debug: already_found_vulns")
-                            vuln_images[image_name]["affected_pods"].append(
+                            images[image_name]["affected_pods"].append(
                                 {
                                     "pod_name": pod_name, 
                                     "container_name": container_name, 
@@ -1110,30 +1157,10 @@ class Kubenumerate():
             self.show_status_bar(i + 1, total_pods, start)
         print("\n", flush=True, file=sys.stdout)
 
-        # print("DEBUG: vuln_images:", vuln_containers)
-        if len(vuln_containers) != 0:
-            self.vuln_image = True
-            df = pd.DataFrame(vuln_containers)
-            df.columns = [
-                "Image",
-                "Pod",
-                "Container",
-                "CRIT",
-                "HIGH",
-                "Namespace"]
-            df.sort_values(by='Image', ascending=True, inplace=True)
-            df.to_excel(
-                writer,
-                sheet_name="Vulnerable Images",
-                index=False,
-                freeze_panes=(1,0))
-
-        else:
-            print(f'{self.green_text("[+]")} No images found containing any high- or critical-risk issues')
-
+        return images
 
     def raise_issues(self):
-        """ Suggest the consultant what issues might need raising """
+        """ Suggest what issues might be present """
 
         print(f'{self.green_text("[+]")} Suggested findings detected:')
 
@@ -1158,7 +1185,7 @@ class Kubenumerate():
             print(f'\t{self.red_text("[!]")} CIS Benchmarks')
 
         # #TODO:to determine
-        # self.depr_api
+        # if self.depr_api:
 
         # CPU usage
         if not self.limits_set:
