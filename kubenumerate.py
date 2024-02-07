@@ -21,7 +21,7 @@ class Kubenumerate():
 
     def __init__(self, automount=False, cis=False, date=datetime.datetime.now().strftime("%b%y"), depr_api=False, excel_file="", hardened=True, kubeaudit_file="", kube_bench_file="", kubectl_pods_file="",
                  kubectl_path=f"{os.getcwd()}/kubenumerate_out/kubectl_output/", limits=True, out_path=f"{os.getcwd()}/kubenumerate_out/", pkl_recovery="", pods="", privesc=False, privileged=False, requisites=True, trivy_file="", verbosity=1, vuln_image=False):
-        """ Initialize attributes """
+        """Initialize attributes"""
 
         self.automount         = automount
         self.cis_detected      = cis
@@ -45,7 +45,7 @@ class Kubenumerate():
         self.verbosity         = verbosity # TODO finish implementing it
 
     def parse_args(self):
-        """ Parse args and return them """
+        """Parse args and return them"""
 
         parser = argparse.ArgumentParser(
             description='Uses local kubeconfig file to launch kubeaudit, kube-bench, kubectl and trivy and parses all useful output to excel.')
@@ -72,7 +72,7 @@ class Kubenumerate():
         return parser.parse_args()
 
     def check_requisites(self):
-        """ Check for kubeaudit, kube-bench and trivy. Exit if they are not present in the system """
+        """Check for kubeaudit, kube-bench and trivy. Exit if they are not present in the system"""
 
         if not shutil.which("kubeaudit"):
             print(f'{self.red_text("[-]")} Please install kubeaudit: https://github.com/Shopify/kubeaudit')
@@ -91,7 +91,7 @@ class Kubenumerate():
             sys.exit(2)
 
     def parse_excel_filename(self, args):
-        """ Construct the excel filename according to the switches passed to the script """
+        """Construct the excel filename according to the switches passed to the script"""
 
         if not args.excel_out:
             self.excel_file = f"{self.out_path}kubenumerate_results_v1_0.xlsx"
@@ -101,7 +101,7 @@ class Kubenumerate():
         self.excel_file = args.excel_out
 
     def launch_kubeaudit(self, args):
-        """ Check whether a previous kubeaudit json file already exists. If not, launch kubeaudit """
+        """Check whether a previous kubeaudit json file already exists. If not, launch kubeaudit"""
 
         if args.kubeaudit_out is not None:
             # TODO: refactor this to instruct kubeaudit to go one by one over the yaml manifests extracted now by kubectl
@@ -121,7 +121,7 @@ class Kubenumerate():
         self.get_kubeaudit_all()
 
     def launch_kube_bench(self):
-        """ Check whether a previous kube-bench json file already exists. If not, launch kube-bench """
+        """Check whether a previous kube-bench json file already exists. If not, launch kube-bench"""
 
         # Double-check if a file already exists
         self.kube_bench_file = f"{self.out_path}kube_bench_output.json"
@@ -134,7 +134,7 @@ class Kubenumerate():
         self.get_kubebench_output()
 
     def launch_kubectl(self, args):
-        """ Get everything from kubectl """
+        """Get everything from kubectl"""
 
         # Gather all other possible kubectl output in case access to the
         # cluster is lost
@@ -146,7 +146,7 @@ class Kubenumerate():
         print(f'{self.green_text("[+]")} Done. All kubectl output saved to {self.cyan_text(self.out_path)}')
 
     def kubectl_get_all_pods(self, args):
-        """ Check whether a previous kubectl json file already exists. If not, launch kubectl """
+        """Check whether a previous kubectl json file already exists. If not, launch kubectl"""
 
         # First check if args passed a pods json dump
         if args.trivy_file is not None:
@@ -166,7 +166,7 @@ class Kubenumerate():
                 self.pods = json.loads(f.read())
 
     def kubectl_get_all_yaml_and_json(self):
-        """ Gather all output from kubectl in both json and yaml """
+        """Gather all output from kubectl in both json and yaml"""
 
         kubectl_json_file = f'{self.kubectl_path}all_output.json'
         kubectl_yaml_file = f'{self.kubectl_path}all_output.yaml'
@@ -228,7 +228,7 @@ class Kubenumerate():
         print("\n", flush=True, file=sys.stderr)
 
     def Run(self):
-        """ Class main method. Launch kubeaudit, kube-bench and trivy and parse them """
+        """Class main method. Launch kubeaudit, kube-bench and trivy and parse them"""
 
         # Parse args
         args = self.parse_args()
@@ -322,7 +322,7 @@ class Kubenumerate():
         return f'\033[93m{text}\033[0m'
 
     def get_kubeaudit_all(self):
-        """ Run 'kubeaudit all' command and save output to a file"""
+        """Run 'kubeaudit all' command and save output to a file"""
 
         # TODO: add verbosity flag
         print(f'{self.cyan_text("[*]")} Running kubeaudit, please wait...')
@@ -343,7 +343,7 @@ class Kubenumerate():
         print(f'{self.green_text("[+]")} Done. Kubeaudit output saved to {self.cyan_text(self.kubeaudit_file)}')
 
     def get_kubebench_output(self):
-        """ Run 'kube-bench run --targets=node,policies' command and return pointer to output file location """
+        """Run 'kube-bench run --targets=node,policies' command and return pointer to output file location"""
 
         # TODO: add verbosity flag
         print(f'{self.cyan_text("[*]")} Running kube-bench, please wait...')
@@ -363,7 +363,7 @@ class Kubenumerate():
         print(f'{self.green_text("[+]")} Done. Kube-bench output saved to {self.cyan_text(self.kube_bench_file)}')
 
     def cis(self, df, writer):
-        """ Parse the kube-bench JSON file to generate a sheet containing the CIS benchmarks that failed and warned"""
+        """Parse the kube-bench JSON file to generate a sheet containing the CIS benchmarks that failed and warned"""
 
         try:
             # Fail
@@ -440,7 +440,8 @@ class Kubenumerate():
         except: KeyError
 
     def asat(self, df, writer):
-        # Automount ServiceAccount Token True And Default SA
+        """Automount ServiceAccount Token True And Default SA"""
+
         try:
             df_automountSA = df[df['AuditResultName'] ==
                                 'AutomountServiceAccountTokenTrueAndDefaultSA']
@@ -453,6 +454,8 @@ class Kubenumerate():
         except: KeyError
 
     def caps(self, df, writer):
+        """Capabilities"""
+
         try:
             # Missing Caps or Security Context
             df_missing_capabilities_or_seccontext = df[df['AuditResultName']
@@ -487,7 +490,8 @@ class Kubenumerate():
         except: KeyError
 
     def dep_api(self, df, writer):
-        # Deprecated API used
+        """Deprecated API used"""
+
         try:
             df_dep_api_used = df[df['AuditResultName']
                                         == 'DeprecatedAPIUsed']
@@ -526,6 +530,8 @@ class Kubenumerate():
             except: KeyError
 
     def hostns(self, df, writer):
+        """Host namespace"""
+
         try:
             # Namespace Host PID True
             df_nshost_PID_true = df[df['AuditResultName']
@@ -553,6 +559,8 @@ class Kubenumerate():
         return
 
     def limits(self, df, writer):
+        """Limits"""
+
         try:
             # Limits Not Set
             df_limits_not_set = df[df['AuditResultName'] == 'LimitsNotSet']
@@ -575,6 +583,8 @@ class Kubenumerate():
         except: KeyError
 
     def mounts(self, df, writer):
+        """Mounted paths"""
+
         try:
             # Sensitive Paths Mounted
             df_sensitive_paths_mounted = df[df['AuditResultName']
@@ -595,6 +605,8 @@ class Kubenumerate():
         except: KeyError
 
     def netpols(self, df, writer):
+        """Network policies"""
+
         try:
             # Missing Default Deny Ingress And Egress Network Policy
             df_default_deny_missing = df[df['AuditResultName'] ==
@@ -620,6 +632,8 @@ class Kubenumerate():
         except: KeyError
 
     def nonroot(self, df, writer):
+        """Running as"""
+
         try:
             # Run As Non Root PSC Nil CSC Nil
             df_RunAsNonRootNil = df[df['AuditResultName']
@@ -654,6 +668,8 @@ class Kubenumerate():
         except: KeyError
 
     def privesc(self, df, writer):
+        """Privilege escalation"""
+
         try:
             # Allow Privilege Escalation Nil
             df_AllowPrivilegeEscalationNil = df[df['AuditResultName']
@@ -677,6 +693,8 @@ class Kubenumerate():
         except: KeyError
 
     def privileged(self, df, writer):
+        """Privileged"""
+
         try:
             # Privileged Nil
             df_PrivilegedNil = df[df['AuditResultName'] == 'PrivilegedNil']
@@ -699,6 +717,8 @@ class Kubenumerate():
         except: KeyError
 
     def rootfs(self, df, writer):
+        """Root filesystem"""
+
         try:
             # ReadOnlyRootFilesystem Nil
             df_ReadOnlyRootFilesystemNil = df[df['AuditResultName']
@@ -711,6 +731,8 @@ class Kubenumerate():
         except: KeyError
 
     def seccomp(self, df, writer):
+        "Seccomp profile"
+
         try:
             # Seccomp Profile Missing
             df_SeccompProfileMissing = df[df['AuditResultName']
@@ -723,10 +745,9 @@ class Kubenumerate():
         except: KeyError
 
     def show_status_bar(self, iteration, count, start, size=50):
-        """ Quick function to show a nice status bar to stderr """
+        """Quick function to show a nice status bar to stderr"""
 
         x = int(size * iteration / count)
-
         if iteration != 0:
             remaining = ((time.time() - start) / iteration) * (count - iteration)
             mins, sec = divmod(remaining, 60)
@@ -740,7 +761,7 @@ class Kubenumerate():
             flush=True)
 
     def recover_from_aborted_scan(self):
-        """ Detect if there are any aborted lists """
+        """Detect if there are any aborted lists"""
 
         if os.path.isfile(self.pkl_recovery) and os.path.getsize(
                 self.pkl_recovery) > 0:
@@ -756,7 +777,7 @@ class Kubenumerate():
         return [], [], [], 0, False
     
     def recover_from_aborted_scan_dict(self):
-        """ Detect if there are any aborted lists """
+        """Detect if there are any aborted lists"""
 
         if os.path.isfile(self.pkl_recovery) and os.path.getsize(
                 self.pkl_recovery) > 0:
@@ -773,6 +794,7 @@ class Kubenumerate():
 
     def run_trivy(self, image_name):
         """ Run Trivy against the specified image """
+
         command = f"trivy i -q --scanners vuln --severity HIGH,CRITICAL --format json {image_name}"
 
         # Start the process
@@ -791,8 +813,7 @@ class Kubenumerate():
         return json.loads(trivy_output)
 
     def trivy_parser(self, writer):
-        """
-        Run trivy against every image in every container and save output to excel file.
+        """Run trivy against every image in every container and save output to excel file.
         The function will recover from any crashed instance
         """
 
@@ -1008,11 +1029,10 @@ class Kubenumerate():
             df.to_excel(writer, sheet_name="Vulnerable Images", index=False, freeze_panes=(1,0))
 
     def trivy_extractor(self):
-        """
-        Run trivy against every image in every container and save output to excel file.
+        """ Run trivy against every image in every container and save output to excel file.
         The function will recover from any crashed instance
-        Vulnerable Images dict structure reference:
-        images_dictionary = {
+
+        returns images_dictionary = {
             image_name (string): {
                 "vulnerable": bool,
                 "crits": int,
@@ -1046,10 +1066,8 @@ class Kubenumerate():
             print(f'{self.red_text("[-]")} No pods detected, aborting...\n{self.red_text("[-]")} Please check the permissions of your current role with the following command:\n\t{self.yellow_text("kubectl auth can-i --list")}')
             return
 
-        # Vars needed
-        self.pkl_recovery = f"{self.out_path}.kubenumerate_trivy_log_lists.pkl"
-
         # Create recovery file if doesn't exist
+        self.pkl_recovery = f"{self.out_path}.kubenumerate_trivy_log_lists.pkl"
         if not os.path.exists(self.pkl_recovery):
             Path.touch(self.pkl_recovery, 0o644)
 
