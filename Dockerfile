@@ -1,11 +1,5 @@
 # syntax=docker/dockerfile:1
 
-# Comments are provided throughout this file to help you get started.
-# If you need more help, visit the Dockerfile reference guide at
-# https://docs.docker.com/go/dockerfile-reference/
-
-# Want to help us make this template better? Share your feedback here: https://forms.gle/ybq9Krt8jtBL3iCk7
-
 ARG PYTHON_VERSION=3.11.6
 FROM python:${PYTHON_VERSION}-slim as base
 
@@ -32,9 +26,9 @@ RUN apt-get update \
 		make \
 		openssh-client \
 		patch \
-        sudo \
+    	sudo \
 		uuid-runtime \
-        wget \
+    	wget \
 	&& rm -rf /var/lib/apt/lists/*
 
 # Create a non-privileged user that the app will run under.
@@ -50,20 +44,22 @@ RUN adduser \
 
 # Kinda defeating the best practices above, we need sudo later on
 RUN localedef -i en_US -f UTF-8 en_US.UTF-8 \
-	&& echo 'subtle ALL=(ALL) NOPASSWD:ALL' >>/etc/sudoers 
+	&& echo 'subtle ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers 
 
 USER subtle
 
+# Create all needed folders for brew and kubeconfig
 RUN git clone https://github.com/Homebrew/brew ~/.linuxbrew/Homebrew \
-&& mkdir ~/.linuxbrew/bin \
-&& ln -s ../Homebrew/bin/brew ~/.linuxbrew/bin \
-&& eval $(~/.linuxbrew/bin/brew shellenv) \
-&& brew --version
+	&& mkdir ~/.linuxbrew/bin \
+	&& ln -s ../Homebrew/bin/brew ~/.linuxbrew/bin \
+	&& eval $(~/.linuxbrew/bin/brew shellenv) \
+	&& brew --version \
+	&& mkdir ~/.kube/
 
-WORKDIR /home/linuxbrew
-ENV PATH=/home/linuxbrew/.linuxbrew/bin:/home/linuxbrew/.linuxbrew/sbin:$PATH
+WORKDIR /home/subtle
+ENV PATH=/home/subtle/.linuxbrew/bin:/home/subtle/.linuxbrew/sbin:$PATH
 
-# Ugly hack to download kube-bench, yes I know
+# Ugly hack to download kube-bench, yes, I know
 RUN curl -s https://api.github.com/repos/aquasecurity/kube-bench/releases/latest | grep amd64.deb | grep browser_download | awk '{ print $2 }' | xargs wget \
     && sudo apt-get install -y ./kube-bench*
 
@@ -73,17 +69,14 @@ RUN HOMEBREW_NO_ANALYTICS=1 HOMEBREW_NO_AUTO_UPDATE=1 brew install \
     kubeaudit \
     trivy
 
-WORKDIR /tmp
+WORKDIR /home/subtle/
 
-# Download dependencies as a separate step to take advantage of Docker's caching.
-# Leverage a cache mount to /root/.cache/pip to speed up subsequent builds.
-# Leverage a bind mount to requirements.txt to avoid having to copy them into
-# into this layer.
-# Copy the source code into the container.
-COPY --chown=linuxbrew:linuxbrew ./kubenumerate.py ./requirements.txt ./
+# Copy script, reqs and kubeconfig file inside the container
+COPY --chown=subtle:subtle ./kubenumerate.py ./requirements.txt ./
+COPY --chown=subtle:subtle ~/.kube/config /home/subtle/
 
 RUN pip install --upgrade pip \
     && pip install -r ./requirements.txt
 
 # Run the application.
-CMD python kubenumerate.py
+ENTRYPOINT [ "python", "kubenumerate.py" ]
