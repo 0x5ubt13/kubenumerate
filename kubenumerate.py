@@ -135,7 +135,7 @@ class Kubenumerate():
         # If set, use parsed filename
         self.excel_file = self.args.excel_out
 
-    def launch_kubeaudit(self, args):
+    def launch_kubeaudit(self):
         """Check whether a previous kubeaudit json file already exists. If not, launch kubeaudit"""
 
         if self.args.kubeaudit_out is not None:
@@ -229,6 +229,9 @@ class Kubenumerate():
                 if os.path.exists(f'{self.kubectl_path}{resource}.json'):
                     continue
                 try:
+                    Path.touch(f'{self.kubectl_path}{resource}.json', 0o644)
+                    Path.touch(f'{self.kubectl_path}{resource}.yaml', 0o644)
+                    
                     command = f"kubectl get {resource} -A -o json".split(" ")
                     process = subprocess.Popen(
                         command,
@@ -327,8 +330,8 @@ class Kubenumerate():
                         print(f'{self.green_text("[+]")} Kube-bench successfuly parsed')
 
                     # Run trivy methods
-                    self.trivy_parser(writer)
-                    # self.trivy_parser_dict(self.trivy_extractor(), writer=writer) # Attempt to make it more efficient; to test
+                    # self.trivy_parser(writer)
+                    self.trivy_parser_dict(self.trivy_extractor(), writer=writer) # Attempt to make it more efficient; to test
                     if self.verbosity > 0:
                         print(f'{self.green_text("[+]")} Trivy successfuly parsed')
 
@@ -1227,7 +1230,7 @@ class Kubenumerate():
             except json.decoder.JSONDecodeError or ValueError as e:
                 print(f"Error: {str(e)}")
             except KeyError as e:
-                print("Key error": str(e))
+                print("Key error:", str(e))
 
             self.show_status_bar(i + 1, total_pods, start)
         print("\n", flush=True, file=sys.stdout)

@@ -29,8 +29,13 @@ Enter kubenumerate!
       --output OUTPUT, -o OUTPUT
                             Select a different folder for all the output (default ./kubenumerate_out/)
 
+## Containerised version
+
+Currently testing this option, final version coming soon. For current alpha version, see [Docker Hub - gagarter/kubenumerate](https://hub.docker.com/repository/docker/gagarter/kubenumerate/general)
+
+
 ## To Do
 
-- [ ] Clear all TODOs
 - [ ] Containerise
+- [ ] Clear all TODOs
 - [ ] Add verbose flag

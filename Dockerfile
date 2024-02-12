@@ -29,22 +29,22 @@ RUN apt-get update \
     	sudo \
 		uuid-runtime \
     	wget \
-	&& rm -rf /var/lib/apt/lists/*
-
-# Create a non-privileged user that the app will run under.
-# See https://docs.docker.com/go/dockerfile-user-best-practices/
-ARG UID=10001
-RUN adduser \
-    --disabled-password \
-    --gecos "" \
-    --home "/home/linuxbrew/" \
-    --shell "/bin/bash" \
-    --uid "${UID}" \
-    subtle
-
-# Kinda defeating the best practices above, we need sudo later on
-RUN localedef -i en_US -f UTF-8 en_US.UTF-8 \
-	&& echo 'subtle ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers 
+	&& rm -rf /var/lib/apt/lists/* \
+	# Ugly hack to download kube-bench, yes, I know
+	&& curl -s https://api.github.com/repos/aquasecurity/kube-bench/releases/latest | grep amd64.deb | grep browser_download | awk '{ print $2 }' | xargs wget \
+    && sudo apt-get install -y ./kube-bench* \
+	# Kinda defeating the best practices above, we need sudo later on
+	&& localedef -i en_US -f UTF-8 en_US.UTF-8 \
+	&& echo 'subtle ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers \
+	# Create a non-privileged user that the app will run under.
+	# See https://docs.docker.com/go/dockerfile-user-best-practices/
+	&& adduser \
+    	--disabled-password \
+    	--gecos "" \
+    	--home "/home/subtle" \
+    	--shell "/bin/bash" \
+    	--uid 10001 \
+    	subtle
 
 USER subtle
 
@@ -54,26 +54,19 @@ RUN git clone https://github.com/Homebrew/brew ~/.linuxbrew/Homebrew \
 	&& ln -s ../Homebrew/bin/brew ~/.linuxbrew/bin \
 	&& eval $(~/.linuxbrew/bin/brew shellenv) \
 	&& brew --version \
-	&& mkdir ~/.kube/
+	&& mkdir ~/.kube/ \
+	# Install kubectl, kubeaudit and trivy
+	&& brew install \
+    	kubectl \
+    	kubeaudit \
+    	trivy 
 
-WORKDIR /home/subtle
 ENV PATH=/home/subtle/.linuxbrew/bin:/home/subtle/.linuxbrew/sbin:$PATH
 
-# Ugly hack to download kube-bench, yes, I know
-RUN curl -s https://api.github.com/repos/aquasecurity/kube-bench/releases/latest | grep amd64.deb | grep browser_download | awk '{ print $2 }' | xargs wget \
-    && sudo apt-get install -y ./kube-bench*
-
-# Install kubectl, kubeaudit and trivy
-RUN HOMEBREW_NO_ANALYTICS=1 HOMEBREW_NO_AUTO_UPDATE=1 brew install \
-    kubectl \
-    kubeaudit \
-    trivy
-
-WORKDIR /home/subtle/
+WORKDIR /tmp/
 
 # Copy script, reqs and kubeconfig file inside the container
 COPY --chown=subtle:subtle ./kubenumerate.py ./requirements.txt ./
-COPY --chown=subtle:subtle ~/.kube/config /home/subtle/
 
 RUN pip install --upgrade pip \
     && pip install -r ./requirements.txt
