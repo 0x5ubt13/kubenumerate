@@ -216,14 +216,14 @@ class Kubenumerate():
 
         if self.verbosity > 0:
             print(f'{self.cyan_text("[*]")} Gathering output from every resource {self.cyan_text(f"kubectl")} has permission to get. Please wait...')
-        command = "kubectl api-resources --no-headers | awk '// {print $1}' | sort -u".split(" ")
+        command = "kubectl api-resources --no-headers | awk '// {print $1}' | sort -u"
         resources = subprocess.check_output(command, shell=True).decode().split("\n")[:-1]
         total_resources = len(resources)
 
         # Start progress bar
         start = time.time()
         try:
-            self.show_status_bar(0, total_resources, start=start)
+            self.show_status_bar(0, "resources", total_resources, start=start)
             for i, resource in enumerate(resources):
                 # Skip if it already exists
                 if os.path.exists(f'{self.kubectl_path}{resource}.json'):
@@ -265,7 +265,7 @@ class Kubenumerate():
                 # And append to the catch-all file for global queries
                 with open(kubectl_yaml_file, '+a') as f:
                     f.write(stdout.decode("utf-8"))
-                self.show_status_bar(i + 1, total_resources, start=start)
+                self.show_status_bar(i + 1, "resources", total_resources, start=start)
 
         except ZeroDivisionError:
             print(f'{self.red_text["-"]} No resources were found. Are you connected to the cluster?')
@@ -330,8 +330,7 @@ class Kubenumerate():
                         print(f'{self.green_text("[+]")} Kube-bench successfuly parsed')
 
                     # Run trivy methods
-                    # self.trivy_parser(writer)
-                    self.trivy_parser_dict(self.trivy_extractor(), writer=writer) # Attempt to make it more efficient; to test
+                    self.trivy_parser(writer)
                     if self.verbosity > 0:
                         print(f'{self.green_text("[+]")} Trivy successfuly parsed')
 
@@ -374,7 +373,8 @@ class Kubenumerate():
 
         if stderr is not None:
             # Raise error
-            print(f'{self.red_text("[-]")} Error running kubeaudit: {stderr}')
+            if self.verbosity > 1:
+                print(f'{self.red_text("[-]")} Error running kubeaudit: {stderr}')
 
         # Save the output to a file
         with open(self.kubeaudit_file, "w") as output_kubeaudit_file:
@@ -399,7 +399,8 @@ class Kubenumerate():
         stdout, stderr = process.communicate()
         if stderr is not None:
             # Raise error
-            print(f'{self.red_text("[-]")} Error running kube-bench: {stderr}')
+            if self.verbosity > 1:
+                print(f'{self.red_text("[-]")} Error running kube-bench: {stderr}')
 
         # Save the output to a file
         with open(self.kube_bench_file, "w") as output_kube_bench_file:
@@ -790,7 +791,7 @@ class Kubenumerate():
             self.hardened = False
         except: KeyError
 
-    def show_status_bar(self, iteration, count, start, size=50):
+    def show_status_bar(self, iteration, resource, count, start, size=50):
         """Quick function to show a nice status bar to stderr"""
 
         x = int(size * iteration / count)
@@ -801,7 +802,7 @@ class Kubenumerate():
         else:
             time_str = "N/A"
 
-        print(f"\t Scanned: [{u'█' * x}{' ' * (size-x)}] {iteration}/{count} pods. ETA: {time_str}",
+        print(f"\t Scanned: [{u'█' * x}{' ' * (size-x)}] {iteration}/{count} {resource}. ETA: {time_str}",
             end='\r',
             file=sys.stderr,
             flush=True)
@@ -895,7 +896,7 @@ class Kubenumerate():
 
         # Start progress bar
         start = time.time()
-        self.show_status_bar(iteration, total_pods, start)
+        self.show_status_bar(iteration, "pods", total_pods, start)
 
         # Main loop to go through all images
         for i, pod in enumerate(pods):
@@ -1008,7 +1009,7 @@ class Kubenumerate():
             except KeyError as e:
                 if self.verbosity > 1:
                     print("Key error:", e)
-            self.show_status_bar(i + 1, total_pods, start)
+            self.show_status_bar(i + 1, "pods", total_pods, start)
         print("\n", flush=True, file=sys.stdout)
 
         if self.verbosity > 1:
@@ -1031,211 +1032,6 @@ class Kubenumerate():
                 freeze_panes=(1,0))
         else:
             print(f'{self.green_text("[+]")} No images found containing any high- or critical-risk issues')
-
-    def trivy_parser_dict(self, images_dict, writer):
-        """ Parse the extracted dictionary to excel"""
-
-        def count_vulnerable_images_and_pods(images_dictionary):
-            """ Nested function that uses multiprocessing to loop through the dictionary """
-
-            num_vulnerable_images = 0
-            num_vulnerable_pods = 0
-
-            def count_vulnerable_pods(image_data):
-                nonlocal num_vulnerable_pods
-                if image_data["vulnerable"]:
-                    num_vulnerable_pods += len(image_data["affected_pods"])
-
-            with multiprocessing.Pool() as pool:
-                results = pool.map_async(count_vulnerable_pods, images_dictionary.values())
-                if self.verbosity > 1:
-                    print(f'DEBUG - results: {results}')
-                num_vulnerable_images = sum(1 for image_data in images_dictionary.values() if image_data["vulnerable"])
-
-            return num_vulnerable_images, num_vulnerable_pods
-
-        num_vulnerable_images, num_vulnerable_pods = count_vulnerable_images_and_pods(images_dict)
-        if self.verbosity > 0:
-            print(f"There are {num_vulnerable_images} vulnerable images and {num_vulnerable_pods} vulnerable pods.")
-
-        # Loop over the dict's items and categorise them
-        vuln_containers, export = [], False
-        for image_name, image_data in images_dict.items():
-            if image_data["vulnerable"]:
-                export = True
-                for pod_data in image_data["affected_pods"]:
-                    vuln_containers.append([
-                        image_name,                 # Column Image
-                        pod_data["pod_name"],       # Column Pod
-                        pod_data["container_name"], # Column Container
-                        image_data["crits"],        # Column CRITs
-                        image_data["highs"],        # Column HIGHs
-                        pod_data["namespace"],      # Column Namespace
-                    ])
-
-        if export:
-            df = pd.DataFrame(vuln_containers, columns=[
-                "Image",
-                "Pod",
-                "Container",
-                "CRITs",
-                "HIGHs",
-                "Namespace",
-            ])
-            df.sort_values(by='Image', ascending=True, inplace=True)
-            df.to_excel(writer, sheet_name="Vulnerable Images", index=False, freeze_panes=(1,0))
-
-    def trivy_extractor(self):
-        """ Run trivy against every image in every container and save output to excel file.
-        The function will recover from any crashed instance
-
-        returns images_dictionary = {
-            image_name (string): {
-                "vulnerable": bool,
-                "crits": int,
-                "highs": int,
-                "affected_pods": [
-                    {
-                        "pod_name": "pod_1" (string),
-                        "container_name": "container_1" (string),
-                        "namespace": "ns_1" (string),
-                    },
-                    {
-                        "pod_name": "pod_2" (string),
-                        "container_name": "container_2" (string),
-                        "namespace": "ns_2" (string),
-                    },
-                ],
-            }
-        }
-        """
-
-        """ Note:
-        How to check manually all images for debugging. Commands:
-        Unique image names: `cat kubectl_all_pods.json | grep '"image":' | sort -u | tr -d '", ' | cut -d ":" -f2,3`
-        Total unique count: `cat kubectl_all_pods.json | grep '"image":' | sort -u | tr -d '", ' | cut -d ":" -f2,3 | wc -l | xargs echo "Total images:"`
-        """
-
-        # Check if no pods were found
-        pods = self.pods.get("items", [])
-        total_pods = len(pods)
-        if total_pods == 0:
-            print(f'{self.red_text("[-]")} No pods detected, aborting...\n{self.red_text("[-]")} Please check the permissions of your current role with the following command:\n\t{self.yellow_text("kubectl auth can-i --list")}')
-            return
-
-        # Create recovery file if doesn't exist
-        self.pkl_recovery = f"{self.out_path}.kubenumerate_trivy_log_lists.pkl"
-        if not os.path.exists(self.pkl_recovery):
-            Path.touch(self.pkl_recovery, 0o644)
-
-        if self.verbosity > 0:
-            print(f'{self.yellow_text("[!]")} Launching trivy to scan every unique container image for vulns. This might take a while, please wait...\n{self.yellow_text("[!]")} Known issues: if stuck at 0, run: \n\ttrivy i --download-java-db-only')
-            print(f'{self.cyan_text("[*]")} Scanning {self.yellow_text(f"{total_pods}")} pods detected...')
-
-        # Recover from aborted scan, if needed
-        images, iteration, recovered_file = self.recover_from_aborted_scan_dict()
-
-        # Start progress bar
-        start = time.time()
-        self.show_status_bar(iteration, total_pods, start)
-
-        # Main loop to go through all images
-        for i, pod in enumerate(pods):
-            # Check to see if this is a repeating test
-            if iteration == total_pods - 1:
-                print(f'{self.red_text("[-]")} It looks like this test was already run in the past.\nIf you want to redo the assessment, select a different output folder, or run\n\t{self.yellow_text(f"rm {self.pkl_recovery}")}')
-                break
-
-            # Skip to the recovered point
-            if recovered_file and i < iteration:
-                continue
-
-            # Save progress with every new loop in case of needing to recover
-            # from fatal error
-            data = (images, i)
-            with open(self.pkl_recovery, "r+b") as recovery_file:
-                pickle.dump(data, recovery_file)
-
-            # Check if the image has already been scanned
-            try:
-                namespace = pod["metadata"]["namespace"]
-                pod_name = pod["metadata"]["name"]
-                containers = pod.get("spec", {}).get("containers", [])
-                for container in containers:
-                    image_name = container.get("image")
-                    container_name = container.get("name")
-                    if image_name:
-                        # Don't scan the same image twice
-                        already_checked, already_found_vulns = False, False
-                        if image_name in images:
-                            already_checked = True
-                            if images[image_name]["vulnerable"]:
-                                already_found_vulns = True
-
-                        # Not vuln but image already checked, skip it
-                        if already_checked and not already_found_vulns:
-                            if self.verbosity > 1:
-                                print("Debug: already checked. Skipping")
-                            continue
-
-                        # Vuln image found duplicated, add pod info to vuln list and skip it
-                        if already_found_vulns:
-                            if self.verbosity > 1:
-                                print("Debug: already_found_vulns")
-                            images[image_name]["affected_pods"].append(
-                                {
-                                    "pod_name": pod_name, 
-                                    "container_name": container_name, 
-                                    "namespace": namespace,
-                                }
-                            )
-                            continue
-
-                        # Proceed scanning the image
-                        highs, crits = 0, 0
-                        try:
-                            if self.verbosity > 1:
-                                print(f"Scanning image {image_name}")
-                            vulnerabilities = self.run_trivy(image_name)
-                            if vulnerabilities == "error":
-                                continue
-                            for result in vulnerabilities.get("Results", []):
-                                for vulnerability in result.get(
-                                        'Vulnerabilities', []):
-                                    if "HIGH" in vulnerability.get('Severity'):
-                                        highs += 1
-
-                                    if "CRITICAL" in vulnerability.get(
-                                            'Severity'):
-                                        crits += 1
-
-                            if highs > 0 or crits > 0:
-                                # Register the new vulnerable image                       
-                                images[image_name] = {
-                                    "vulnerable": True,
-                                    "highs": highs,
-                                    "crits": crits,
-                                    "affected_pods": [{"pod_name": pod_name, "container_name": container_name, "namespace": namespace}]
-                                }
-                            else:
-                                images[image_name]["vulnerable"] = False
-                        except subprocess.CalledProcessError as e:
-                            print(f"Error scanning trivy: {str(e)}")
-                        # Don't Ignore errors for now
-                        except Exception as e:
-                            print("ERROR!:", e)
-            except KeyboardInterrupt:
-                print(f'\n{self.cyan_text("[*]")} Ctrl+c detected. Recovery file saved to {self.cyan_text(self.pkl_recovery)}...')
-                sys.exit(99)
-            except json.decoder.JSONDecodeError or ValueError as e:
-                print(f"Error: {str(e)}")
-            except KeyError as e:
-                print("Key error:", str(e))
-
-            self.show_status_bar(i + 1, total_pods, start)
-        print("\n", flush=True, file=sys.stdout)
-
-        return images
 
     def raise_issues(self):
         """ Suggest what issues might be present """
