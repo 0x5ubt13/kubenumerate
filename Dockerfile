@@ -26,9 +26,9 @@ RUN apt-get update \
 		make \
 		openssh-client \
 		patch \
-    	sudo \
+    		sudo \
 		uuid-runtime \
-    	wget \
+    		wget \
 	&& rm -rf /var/lib/apt/lists/* \
 	# Ugly hack to download kube-bench, yes, I know
 	&& curl -s https://api.github.com/repos/aquasecurity/kube-bench/releases/latest | grep amd64.deb | grep browser_download | awk '{ print $2 }' | xargs wget \
@@ -57,9 +57,9 @@ RUN git clone https://github.com/Homebrew/brew ~/.linuxbrew/Homebrew \
 	&& mkdir ~/.kube/ \
 	# Install kubectl, kubeaudit and trivy
 	&& brew install \
-    	kubectl \
-    	kubeaudit \
-    	trivy 
+    		kubectl \
+    		kubeaudit \
+    		trivy 
 
 ENV PATH=/home/subtle/.linuxbrew/bin:/home/subtle/.linuxbrew/sbin:$PATH
 

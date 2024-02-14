@@ -3,7 +3,6 @@
 import argparse
 import datetime
 import json
-import multiprocessing
 import os
 import pandas as pd
 from pathlib import Path
@@ -19,8 +18,8 @@ class Kubenumerate():
         PRs: https://github.com/0x5ubt13/kubenumerate
     """
 
-    def __init__(self, args="", automount=False, cis=False, date=datetime.datetime.now().strftime("%b%y"), depr_api=False, excel_file="", hardened=True, kubeaudit_file="", kube_bench_file="", kubectl_pods_file="",
-                 kubectl_path=f"{os.getcwd()}/kubenumerate_out/kubectl_output/", limits=True, out_path=f"{os.getcwd()}/kubenumerate_out/", pkl_recovery="", pods="", privesc=False, privileged=False, requisites=True, trivy_file="", verbosity=1, vuln_image=False):
+    def __init__(self, args="", automount=False, cis=False, date=datetime.datetime.now().strftime("%b%y"), depr_api=False, excel_file="/tmp/kubenumerate_out/kubenumerate_results_v1_0.xlsx", hardened=True, kubeaudit_file="", kube_bench_file="", kubectl_pods_file="",
+                 kubectl_path="/tmp/kubenumerate_out/kubectl_output/", limits=True, out_path="/tmp/kubenumerate_out/", pkl_recovery="", pods="", privesc=False, privileged=False, rbac_police=False, requisites=True, trivy_file="", verbosity=1, vuln_image=False):
         """Initialize attributes"""
 
         self.args              = args
@@ -39,11 +38,12 @@ class Kubenumerate():
         self.pods              = pods
         self.privesc_set       = privesc
         self.privileged_flag   = privileged
+        self.rbac_police       = rbac_police
         self.requisites        = requisites
         self.trivy_file        = trivy_file
         self.pkl_recovery      = pkl_recovery
         self.vuln_image        = vuln_image
-        self.verbosity         = verbosity # TODO finish implementing it
+        self.verbosity         = verbosity
 
     def parse_args(self):
         """Parse args and return them"""
@@ -53,8 +53,8 @@ class Kubenumerate():
         parser.add_argument(
             '--excel-out',
             '-e',
-            help="Select a different name for your excel file. Default: 'kubenumerate_results_v1_0.xlsx'",
-            default='kubenumerate_results_v1_0.xlsx')
+            help="Select a different name for your excel file. Default: /tmp/kubenumerate_out/kubenumerate_results_v1_0.xlsx",
+            default='/tmp/kubenumerate_out/kubenumerate_results_v1_0.xlsx')
         parser.add_argument(
             '--kubeaudit-out',
             '-a',
@@ -66,14 +66,13 @@ class Kubenumerate():
         parser.add_argument(
             '--output',
             '-o',
-            help="Select a different folder for all the output (default ./kubenumerate_out/)",
-            default=f"{os.getcwd()}/kubenumerate_out/")
+            help="Select a different folder for all the output (default /tmp/kubenumerate_out/)",
+            default=f"/tmp/kubenumerate_out/")
         parser.add_argument(
             '--verbosity',
             '-v',
-            help="Select a verbosity level. (0 = quiet | default = 1 | verbose = 2)",
+            help="Select a verbosity level. (0 = quiet | default = 1 | verbose/debug = 2)",
             default=1)
-        # TODO: implement thoroughly verbose/quiet flags
 
         self.args = parser.parse_args()
 
@@ -102,10 +101,12 @@ class Kubenumerate():
     def global_checks(self):
         """Perform other necessary cheks to ensure a correct execution"""
 
-        # Check out path exists and create it if not
+        # Use args if passed
         if self.args.output is not None:
             self.out_path = f'{os.path.abspath(self.args.output)}/'
             self.kubectl_path = f'{os.path.abspath(self.args.output)}/kubectl_output/'
+
+        # Check path exists and create it if not    
         try:
             os.makedirs(self.out_path)
             if self.verbosity > 0:
@@ -114,6 +115,7 @@ class Kubenumerate():
             if self.verbosity > 0:
                 print(f'{self.green_text("[+]")} Using existing "{self.cyan_text(self.out_path)}" folder for all output.')
 
+        # Do the same for the kubectl output folder
         try:
             os.makedirs(self.kubectl_path)
             if self.verbosity > 0:
@@ -129,7 +131,6 @@ class Kubenumerate():
         """Construct the excel filename according to the switches passed to the script"""
 
         if not self.args.excel_out:
-            self.excel_file = f"{self.out_path}kubenumerate_results_v1_0.xlsx"
             return
         
         # If set, use parsed filename
@@ -139,7 +140,6 @@ class Kubenumerate():
         """Check whether a previous kubeaudit json file already exists. If not, launch kubeaudit"""
 
         if self.args.kubeaudit_out is not None:
-            # TODO: refactor this to instruct kubeaudit to go one by one over the yaml manifests extracted now by kubectl
             # Read filename from flag
             self.kubeaudit_file = self.args.kubeaudit_out
         else:
@@ -275,10 +275,11 @@ class Kubenumerate():
     def Run(self):
         """Class main method. Launch kubeaudit, kube-bench and trivy and parse them"""
 
-        if self.verbosity > 0:
-            print(f'{self.cyan_text("[*]")} ----- Running initial checks -----')
         # Parse args
         self.parse_args()
+
+        if self.verbosity > 0:
+            print(f'{self.cyan_text("[*]")} ----- Running initial checks -----')
 
         # Make sure all necessary software is installed
         self.check_requisites()
@@ -359,7 +360,6 @@ class Kubenumerate():
     def get_kubeaudit_all(self):
         """Run 'kubeaudit all' command and save output to a file"""
 
-        # TODO: add verbosity flag
         if self.verbosity > 0:
             print(f'{self.cyan_text("[*]")} Running kubeaudit, please wait...')
 
@@ -386,7 +386,6 @@ class Kubenumerate():
     def get_kubebench_output(self):
         """Run 'kube-bench run --targets=node,policies' command and return pointer to output file location"""
 
-        # TODO: add verbosity flag
         if self.verbosity > 0:
             print(f'{self.cyan_text("[*]")} Running kube-bench, please wait...')
 
@@ -423,7 +422,10 @@ class Kubenumerate():
                                            "reason",
                                            "remediation"]]
             df_failed_cis.to_excel(
-                writer, sheet_name="CIS benchmarks - Fail", index=False)
+                writer,
+                sheet_name="CIS benchmarks - Fail",
+                index=False,
+                freeze_panes=(1,0))
             self.cis_detected = True
         except: KeyError
 
@@ -440,7 +442,8 @@ class Kubenumerate():
             df_warn_cis.to_excel(
                 writer,
                 sheet_name="CIS benchmarks - Warn",
-                index=False)
+                index=False,
+                freeze_panes=(1,0))
             self.cis_detected = True
         except: KeyError
 
@@ -457,7 +460,8 @@ class Kubenumerate():
             df_pass_cis.to_excel(
                 writer,
                 sheet_name="CIS benchmarks - Pass",
-                index=False)
+                index=False,
+                freeze_panes=(1,0))
         except: KeyError
 
     def apparmor(self, df, writer):
@@ -468,7 +472,10 @@ class Kubenumerate():
             df_apparmor_disabled = df_apparmor_disabled[[
                 "ResourceNamespace", "ResourceKind", "ResourceName", "Container", "AnnotationValue", "msg"]]
             df_apparmor_disabled.to_excel(
-                writer, sheet_name="Apparmor - Disabled", index=False)
+                writer,
+                sheet_name="Apparmor - Disabled",
+                index=False,
+                freeze_panes=(1,0))
 
             self.hardened = False
         except: KeyError
@@ -481,7 +488,10 @@ class Kubenumerate():
             df_apparmor_missing = df_apparmor_missing[[
                 "ResourceNamespace", "ResourceKind", "ResourceName", "Container", "MissingAnnotation", "msg"]]
             df_apparmor_missing.to_excel(
-                writer, sheet_name="Apparmor - Missing", index=False)
+                writer,
+                sheet_name="Apparmor - Missing",
+                index=False,
+                freeze_panes=(1,0))
 
             self.hardened = False
         except: KeyError
@@ -496,7 +506,10 @@ class Kubenumerate():
                 "ResourceNamespace", "ResourceKind", "ResourceName", "Container", "Metadata", "msg"]]
 
             df_automountSA.to_excel(
-                writer, sheet_name="Automount SA", index=False)
+                writer,
+                sheet_name="Automount SA",
+                index=False,
+                freeze_panes=(1,0))
             self.automount = True
         except: KeyError
 
@@ -510,7 +523,10 @@ class Kubenumerate():
             df_missing_capabilities_or_seccontext = df_missing_capabilities_or_seccontext[[
                 "ResourceNamespace", "ResourceKind", "ResourceName", "Container", "Metadata", "msg"]]
             df_missing_capabilities_or_seccontext.to_excel(
-                writer, sheet_name="Caps - missing", index=False)
+                writer,
+                sheet_name="Caps - missing",
+                index=False,
+                freeze_panes=(1,0))
             self.hardened = False
         except: KeyError
 
@@ -521,7 +537,10 @@ class Kubenumerate():
             df_added_capabilities = df_added_capabilities[[
                 "ResourceNamespace", "ResourceKind", "ResourceName", "Container", "Metadata", "msg"]]
             df_added_capabilities.to_excel(
-                writer, sheet_name="Caps - Added", index=False)
+                writer,
+                sheet_name="Caps - Added",
+                index=False,
+                freeze_panes=(1,0))
             self.hardened = False
         except: KeyError
 
@@ -532,7 +551,10 @@ class Kubenumerate():
             df_caps_should_drop = df_caps_should_drop[[
                 "ResourceNamespace", "ResourceKind", "ResourceName", "Container", "msg"]]
             df_caps_should_drop.to_excel(
-                writer, sheet_name="Caps - Not Drop All", index=False)
+                writer,
+                sheet_name="Caps - Not Drop All",
+                index=False,
+                freeze_panes=(1,0))
             self.hardened = False
         except: KeyError
 
@@ -555,7 +577,10 @@ class Kubenumerate():
                                                              "ReplacementKind",
                                                              "msg"]]
             df_dep_api_used.to_excel(
-                writer, sheet_name="Deprecated API Used", index=False)
+                writer,
+                sheet_name="Deprecated API Used",
+                index=False,
+                freeze_panes=(1,0))
             self.depr_api = True
         except KeyError:
             try:
@@ -572,7 +597,10 @@ class Kubenumerate():
                                                                  "ResourceApiVersion",
                                                                  "msg"]]
                 df_dep_api_used.to_excel(
-                    writer, sheet_name="Deprecated API Used", index=False)
+                    writer,
+                    sheet_name="Deprecated API Used",
+                    index=False,
+                freeze_panes=(1,0))
                 self.dprc_api = True
             except: KeyError
 
@@ -586,7 +614,10 @@ class Kubenumerate():
             df_nshost_PID_true = df_nshost_PID_true[[
                 "ResourceNamespace", "ResourceKind", "ResourceName", "msg"]]
             df_nshost_PID_true.to_excel(
-                writer, sheet_name="Host Namespace - hostPID true", index=False)
+                writer,
+                sheet_name="Host Namespace - hostPID true",
+                index=False,
+                freeze_panes=(1,0))
             self.hardened = False
         except: KeyError
 
@@ -597,7 +628,10 @@ class Kubenumerate():
             df_ns_hostnetwork_true = df_ns_hostnetwork_true[[
                 "ResourceNamespace", "ResourceKind", "ResourceName", "msg"]]
             df_ns_hostnetwork_true.to_excel(
-                writer, sheet_name="Host ns - hostNetwork true", index=False)
+                writer,
+                sheet_name="Host ns - hostNetwork true",
+                index=False,
+                freeze_panes=(1,0))
             self.hardened = False
         except: KeyError
 
@@ -614,7 +648,10 @@ class Kubenumerate():
             df_limits_not_set = df_limits_not_set[[
                 "ResourceNamespace", "ResourceKind", "ResourceName", "Container", "msg"]]
             df_limits_not_set.to_excel(
-                writer, sheet_name="Limits - Not set", index=False)
+                writer,
+                sheet_name="Limits - Not set",
+                index=False,
+                freeze_panes=(1,0))
             self.limits_set = False
         except: KeyError
 
@@ -625,7 +662,10 @@ class Kubenumerate():
             df_limits_cpu_not_set = df_limits_cpu_not_set[[
                 "ResourceNamespace", "ResourceKind", "ResourceName", "Container", "msg"]]
             df_limits_cpu_not_set.to_excel(
-                writer, sheet_name="Limits - CPU Not set", index=False)
+                writer,
+                sheet_name="Limits - CPU Not set",
+                index=False,
+                freeze_panes=(1,0))
             self.limits_set = False
         except: KeyError
 
@@ -647,7 +687,10 @@ class Kubenumerate():
                                                                      "Container",
                                                                      "msg"]]
             df_sensitive_paths_mounted.to_excel(
-                writer, sheet_name="Mounts - Sensitive Paths", index=False)
+                writer,
+                sheet_name="Mounts - Sensitive Paths",
+                index=False,
+                freeze_panes=(1,0))
             self.hardened = False
         except: KeyError
 
@@ -661,9 +704,12 @@ class Kubenumerate():
             df_default_deny_missing = df_default_deny_missing[[
                 "ResourceKind", "ResourceName", "msg"]]
             df_default_deny_missing.to_excel(
-                writer, sheet_name="NetPol - Missing default deny", index=False)
+                writer,
+                sheet_name="NetPol - Missing default deny",
+                index=False,
+                freeze_panes=(1,0))
             self.hardened = False
-            print("!!!!!!! REMEMBER TO RUN RBACPOLICE IF HAVE ENOUGH PERMS")
+            self.rbac_police = True
         except: KeyError
 
         try:
@@ -673,9 +719,12 @@ class Kubenumerate():
             df_allow_all = df_allow_all[[
                 "ResourceKind", "ResourceName", "msg"]]
             df_allow_all.to_excel(
-                writer, sheet_name="NetPol - Allow all", index=False)
+                writer,
+                sheet_name="NetPol - Allow all",
+                index=False,
+                freeze_panes=(1,0))
             self.hardened = False
-            print("!!!!!!! REMEMBER TO RUN RBACPOLICE IF HAVE ENOUGH PERMS")
+            self.rbac_police = True
         except: KeyError
 
     def nonroot(self, df, writer):
@@ -688,7 +737,10 @@ class Kubenumerate():
             df_RunAsNonRootNil = df_RunAsNonRootNil[[
                 "ResourceNamespace", "ResourceKind", "ResourceName", "Container", "msg"]]
             df_RunAsNonRootNil.to_excel(
-                writer, sheet_name="Non Root - Missing", index=False)
+                writer,
+                sheet_name="Non Root - Missing",
+                index=False,
+                freeze_panes=(1,0))
             self.hardened = False
         except: KeyError
 
@@ -699,7 +751,10 @@ class Kubenumerate():
             df_RunAsUserCSCRoot = df_RunAsUserCSCRoot[[
                 "ResourceNamespace", "ResourceKind", "ResourceName", "Container", "msg"]]
             df_RunAsUserCSCRoot.to_excel(
-                writer, sheet_name="Non Root - CSC UID 0", index=False)
+                writer,
+                sheet_name="Non Root - CSC UID 0",
+                index=False,
+                freeze_panes=(1,0))
             self.hardened = False
         except: KeyError
 
@@ -710,7 +765,10 @@ class Kubenumerate():
             df_RunAsUserPSCRoot = df_RunAsUserPSCRoot[[
                 "ResourceNamespace", "ResourceKind", "ResourceName", "Container", "msg"]]
             df_RunAsUserPSCRoot.to_excel(
-                writer, sheet_name="Non Root - PSC UID 0", index=False)
+                writer,
+                sheet_name="Non Root - PSC UID 0",
+                index=False,
+                freeze_panes=(1,0))
             self.hardened = False
         except: KeyError
 
@@ -724,7 +782,10 @@ class Kubenumerate():
             df_AllowPrivilegeEscalationNil = df_AllowPrivilegeEscalationNil[[
                 "ResourceNamespace", "ResourceKind", "ResourceName", "Container", "msg"]]
             df_AllowPrivilegeEscalationNil.to_excel(
-                writer, sheet_name="Privesc - Nil", index=False)
+                writer,
+                sheet_name="Privesc - Nil",
+                index=False,
+                freeze_panes=(1,0))
             self.privesc_set = False
         except: KeyError
 
@@ -735,7 +796,10 @@ class Kubenumerate():
             df_AllowPrivilegeEscalationTrue = df_AllowPrivilegeEscalationTrue[[
                 "ResourceNamespace", "ResourceKind", "ResourceName", "Container", "msg"]]
             df_AllowPrivilegeEscalationTrue.to_excel(
-                writer, sheet_name="Privesc - True", index=False)
+                writer,
+                sheet_name="Privesc - True",
+                index=False,
+                freeze_panes=(1,0))
             self.privesc_set = False
         except: KeyError
 
@@ -748,9 +812,12 @@ class Kubenumerate():
             df_PrivilegedNil = df_PrivilegedNil[[
                 "ResourceNamespace", "ResourceKind", "ResourceName", "Container", "msg"]]
             df_PrivilegedNil.to_excel(
-                writer, sheet_name="Privileged - Nil", index=False)
+                writer, 
+                sheet_name="Privileged - Nil", 
+                index=False,
+                freeze_panes=(1,0))
             self.privileged_flag = True
-            print("!!!!!!! REMEMBER TO RUN RBACPOLICE")
+            self.rbac_police = True
         except: KeyError
 
         try:
@@ -759,7 +826,10 @@ class Kubenumerate():
             df_PrivilegedTrue = df_PrivilegedTrue[[
                 "ResourceNamespace", "ResourceKind", "ResourceName", "Container", "msg"]]
             df_PrivilegedTrue.to_excel(
-                writer, sheet_name="Privileged - True", index=False)
+                writer, 
+                sheet_name="Privileged - True", 
+                index=False,
+                freeze_panes=(1,0))
             self.privileged_flag = True
         except: KeyError
 
@@ -773,7 +843,10 @@ class Kubenumerate():
             df_ReadOnlyRootFilesystemNil = df_ReadOnlyRootFilesystemNil[[
                 "ResourceNamespace", "ResourceKind", "ResourceName", "Container", "msg"]]
             df_ReadOnlyRootFilesystemNil.to_excel(
-                writer, sheet_name="Root FS - ReadOnly Nil", index=False)
+                writer, 
+                sheet_name="Root FS - ReadOnly Nil", 
+                index=False,
+                freeze_panes=(1,0))
             self.hardened = False
         except: KeyError
 
@@ -787,7 +860,10 @@ class Kubenumerate():
             df_SeccompProfileMissing = df_SeccompProfileMissing[[
                 "ResourceNamespace", "ResourceKind", "ResourceName", "Container", "msg"]]
             df_SeccompProfileMissing.to_excel(
-                writer, sheet_name="Seccomp - Missing", index=False)
+                writer, 
+                sheet_name="Seccomp - Missing", 
+                index=False,
+                freeze_panes=(1,0))
             self.hardened = False
         except: KeyError
 
@@ -863,15 +939,6 @@ class Kubenumerate():
         """Run trivy against every image in every container and save output to excel file.
         The function will recover from any crashed instance
         """
-
-        """ Note:
-        How to check manually all images. Commands:
-        Unique image names: `cat kubectl_all_pods.json | grep '"image":' | sort -u | tr -d '", ' | cut -d ":" -f2,3`
-        Total unique count: `cat kubectl_all_pods.json | grep '"image":' | sort -u | tr -d '", ' | cut -d ":" -f2,3 | wc -l | xargs echo "Total images:"`
-        """
-
-        # TODO: Would it be quicker to first identify vuln images and then create the dataframe looking for containers which have the vuln images?
-        # TODO: refactor function to use dicts instead of lists to make it more efficient
 
         # Check if no pods were found
         pods = self.pods.get("items", [])
@@ -1014,6 +1081,7 @@ class Kubenumerate():
 
         if self.verbosity > 1:
             print("DEBUG: vuln_images:", vuln_containers)
+
         if len(vuln_containers) != 0:
             self.vuln_image = True
             df = pd.DataFrame(vuln_containers)
@@ -1035,9 +1103,12 @@ class Kubenumerate():
 
     def raise_issues(self):
         """ Suggest what issues might be present """
-
-        print(f'{self.green_text("[+]")} Suggested findings detected:')
-
+        
+        if not self.hardened or self.automount or self.vuln_image or self.privileged_flag or self.cis_detected or self.limits_set:
+            print(f'{self.green_text("[+]")} Suggested findings detected:')
+        else:
+            print(f'{self.green_text("[+]")} No findings detected in the cluster.')
+        
         # Containers Not Hardened
         if not self.hardened:
             print(f'\t{self.red_text("[!]")} Containers Not Hardened')
@@ -1064,6 +1135,10 @@ class Kubenumerate():
         # CPU usage
         if not self.limits_set:
             print(f'\t{self.red_text("[!]")} CPU usage')
+
+        # Suggest using RBAC Police
+        if self.rbac_police:
+            print(f'{self.yellow_text("[!]")} Running RBAC Police next might be interesting...\n\t(https://github.com/PaloAltoNetworks/rbac-police)')
 
 
 def main():
