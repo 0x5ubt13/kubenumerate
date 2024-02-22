@@ -190,7 +190,7 @@ class Kubenumerate():
         if self.args.trivy_file is not None:
             self.trivy_file = f"{os.getcwd()}/{self.args.trivy_file}"
             if os.path.exists(self.trivy_file):
-                if self.verbosity > 1:
+                if self.verbosity > 0:
                     print(f'{self.green_text("[+]")} Using passed argument "{self.cyan_text(self.trivy_file)}" file as input file for Trivy to avoid sending unnecesary requests to the cluster.')
                 with open(self.trivy_file, "r") as f:
                     self.pods = json.loads(f.read())
@@ -199,10 +199,15 @@ class Kubenumerate():
         # Use a freshly extracted pods file
         self.kubectl_pods_file = f"{self.kubectl_path}pods.json"
         if os.path.exists(self.kubectl_pods_file):
-            if self.verbosity > 1:
+            if self.verbosity > 0:
                 print(f'{self.green_text("[+]")} Using "{self.cyan_text(self.kubectl_pods_file)}" file as input file for Trivy to avoid sending unnecesary requests to the cluster.')
             with open(self.kubectl_pods_file, "r") as f:
                 self.pods = json.loads(f.read())
+                return
+        
+        # Notify if no file was found
+        print(f'{self.red_text("[-]")} No pods file detected, are you sure kubectl has run fine?')
+
 
     def kubectl_get_all_yaml_and_json(self):
         """Gather all output from kubectl in both json and yaml"""
@@ -227,6 +232,8 @@ class Kubenumerate():
             for i, resource in enumerate(resources):
                 # Skip if it already exists
                 if os.path.exists(f'{self.kubectl_path}{resource}.json'):
+                    if self.verbosity > 0:
+                        print(f'{self.yellow_text("[!]")} "{self.kubectl_path}{resource}.json" already exists in the system. Skipping...')
                     continue
                 try:
                     Path.touch(f'{self.kubectl_path}{resource}.json', 0o644)
@@ -238,8 +245,9 @@ class Kubenumerate():
                         stdout=subprocess.PIPE,
                         stderr=subprocess.PIPE)
                     stdout, stderr = process.communicate()
-                except:
+                except Exception as e:
                     # If forbidden, don't try to do it with yaml
+                    print(f'{self.red_text("[-]")} Error detected while launching `kubectl get {resource} -A -o json`: {e}')
                     continue
 
                 # Save the output to its own file
@@ -941,7 +949,12 @@ class Kubenumerate():
         """
 
         # Check if no pods were found
-        pods = self.pods.get("items", [])
+        try:
+            pods = self.pods.get("items", [])
+        except AttributeError:
+            print(f'{self.red_text("[-]")} No pods detected, aborting...\n{self.red_text("[-]")} Something was ')
+        except Exception as e:
+            print(f'{self.red_text("[-]")} An error occurred: {e}')
         total_pods = len(pods)
         if total_pods == 0:
             print(f'{self.red_text("[-]")} No pods detected, aborting...\n{self.red_text("[-]")} Please check the permissions of your current role with the following command:\n\t{self.yellow_text("kubectl auth can-i --list")}')
