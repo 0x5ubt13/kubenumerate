@@ -42,7 +42,7 @@ Enter kubenumerate!
 
 ## Containerised version
 
-If you don't want to install everything in your system, a containerised version is available at [Docker Hub: gagarter/kubenumerate](https://hub.docker.com/r/gagarter/kubenumerate)`.
+If you don't want to install everything in your system, a containerised version is available at [Docker Hub: gagarter/kubenumerate](https://hub.docker.com/r/gagarter/kubenumerate).
 You will need to mount your `kubeconfig` file inside the container, then mount the desired output folder inside the container, and after running, it will dump all the output in the mounted folder. All this can be done with the following example commands:
 
     # Create folder and prepare kubeconfig file and out directory
@@ -58,7 +58,7 @@ You will need to mount your `kubeconfig` file inside the container, then mount t
         --mount type=bind,source=/tmp/kubenumerate_out,target=/tmp/kubenumerate_out \
         gagarter/kubenumerate
     # Clean up
-    printf 'Removing container ->'; "$(docker rm kubenumerate)"
+    printf "Removing container ->"; docker rm kubenumerate
     rm /tmp/config
 
 If you want to build the image yourself, simply clone the repo, `cd` into it, make any changes you want to the source code and use `docker build`:
