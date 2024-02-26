@@ -18,8 +18,8 @@ class Kubenumerate():
         PRs: https://github.com/0x5ubt13/kubenumerate
     """
 
-    def __init__(self, args="", automount=False, cis=False, date=datetime.datetime.now().strftime("%b%y"), depr_api=False, excel_file="/tmp/kubenumerate_out/kubenumerate_results_v1_0.xlsx", hardened=True, kubeaudit_file="", kube_bench_file="", kubectl_pods_file="",
-                 kubectl_path="/tmp/kubenumerate_out/kubectl_output/", limits=True, out_path="/tmp/kubenumerate_out/", pkl_recovery="", pods="", privesc=False, privileged=False, rbac_police=False, requisites=True, trivy_file="", verbosity=1, vuln_image=False):
+    def __init__(self, args="", automount=False, cis=False, date=datetime.datetime.now().strftime("%b%y"), depr_api=False, excel_file="kubenumerate_results_v1_0.xlsx", hardened=True, kubeaudit_file="", kube_bench_file="", kubectl_pods_file="",
+                 kubectl_path="/tmp/kubenumerate_out/kubectl_output/", limits=True, namespace="-A", out_path="/tmp/kubenumerate_out/", pkl_recovery="", pods="", privesc=False, privileged=False, rbac_police=False, requisites=True, trivy_file="", verbosity=1, version="1.0.2", vuln_image=False):
         """Initialize attributes"""
 
         self.args              = args
@@ -34,6 +34,7 @@ class Kubenumerate():
         self.kubectl_path      = kubectl_path
         self.kubectl_pods_file = kubectl_pods_file
         self.limits_set        = limits
+        self.namespace         = namespace
         self.out_path          = out_path
         self.pods              = pods
         self.privesc_set       = privesc
@@ -42,8 +43,9 @@ class Kubenumerate():
         self.requisites        = requisites
         self.trivy_file        = trivy_file
         self.pkl_recovery      = pkl_recovery
-        self.vuln_image        = vuln_image
         self.verbosity         = verbosity
+        self.version           = version
+        self.vuln_image        = vuln_image
 
     def parse_args(self):
         """Parse args and return them"""
@@ -53,27 +55,31 @@ class Kubenumerate():
         parser.add_argument(
             '--excel-out',
             '-e',
-            help="Select a different name for your excel file. Default: /tmp/kubenumerate_out/kubenumerate_results_v1_0.xlsx",
-            default='/tmp/kubenumerate_out/kubenumerate_results_v1_0.xlsx')
+            help="Select a different name for your excel file. Default: kubenumerate_results_v1_0.xlsx",
+            default='kubenumerate_results_v1_0.xlsx')
         parser.add_argument(
             '--kubeaudit-out',
             '-a',
             help="Select an input kubeaudit json file to parse instead of running kubeaudit using your kubeconfig file")
         parser.add_argument(
-            '--trivy-file',
-            '-f',
-            help="Run trivy from a pods dump in json instead of running kubectl using your kubeconfig file")
+            '--namespace',
+            '-n',
+            help="Select a specific namespace to test, if your scope is restricted. Default: -A",
+            default="-A")
         parser.add_argument(
             '--output',
             '-o',
             help="Select a different folder for all the output (default /tmp/kubenumerate_out/)",
             default=f"/tmp/kubenumerate_out/")
         parser.add_argument(
+            '--trivy-file',
+            '-t',
+            help="Run trivy from a pods dump in json instead of running kubectl using your kubeconfig file")
+        parser.add_argument(
             '--verbosity',
             '-v',
-            help="Select a verbosity level. (0 = quiet | default = 1 | verbose/debug = 2)",
+            help="Select a verbosity level. (0 = quiet | 1 = default | 2 = verbose/debug)",
             default=1)
-
         self.args = parser.parse_args()
 
     def check_requisites(self):
@@ -106,6 +112,9 @@ class Kubenumerate():
             self.out_path = f'{os.path.abspath(self.args.output)}/'
             self.kubectl_path = f'{os.path.abspath(self.args.output)}/kubectl_output/'
 
+        if self.args.namespace is not None and not "-A":
+            self.namespace = f'-n {self.args.namespace}'
+
         # Check path exists and create it if not    
         try:
             os.makedirs(self.out_path)
@@ -130,11 +139,13 @@ class Kubenumerate():
     def parse_excel_filename(self):
         """Construct the excel filename according to the switches passed to the script"""
 
-        if not self.args.excel_out:
+        # Default
+        if self.args.excel_out is None:
+            self.excel_file = f"{self.out_path}kubenumerate_results_v1_0.xlsx"
             return
-        
+
         # If set, use parsed filename
-        self.excel_file = self.args.excel_out
+        self.excel_file = f"{self.out_path}{self.args.excel_out}"
 
     def launch_kubeaudit(self):
         """Check whether a previous kubeaudit json file already exists. If not, launch kubeaudit"""
@@ -239,7 +250,7 @@ class Kubenumerate():
                     Path.touch(f'{self.kubectl_path}{resource}.json', 0o644)
                     Path.touch(f'{self.kubectl_path}{resource}.yaml', 0o644)
                     
-                    command = f"kubectl get {resource} -A -o json".split(" ")
+                    command = f"kubectl get {resource} {self.namespace} -o json".split(" ")
                     process = subprocess.Popen(
                         command,
                         stdout=subprocess.PIPE,
@@ -247,7 +258,7 @@ class Kubenumerate():
                     stdout, stderr = process.communicate()
                 except Exception as e:
                     # If forbidden, don't try to do it with yaml
-                    print(f'{self.red_text("[-]")} Error detected while launching `kubectl get {resource} -A -o json`: {e}')
+                    print(f'{self.red_text("[-]")} Error detected while launching `kubectl get {resource} {self.namespace} -o json`: {e}')
                     continue
 
                 # Save the output to its own file
@@ -259,7 +270,7 @@ class Kubenumerate():
                     f.write(stdout.decode("utf-8"))
 
                 # Repeat with yaml
-                command = f"kubectl get {resource} -A -o yaml"
+                command = f"kubectl get {resource} {self.namespace} -o yaml"
                 process = subprocess.Popen(
                     command.split(" "),
                     stdout=subprocess.PIPE,
@@ -282,6 +293,8 @@ class Kubenumerate():
 
     def Run(self):
         """Class main method. Launch kubeaudit, kube-bench and trivy and parse them"""
+
+        print(f'\n{self.green_text("Kubenumerate")}{self.yellow_text(":")} {self.cyan_text(f"Scan your whole current context with just 1 command")}\n     {self.green_text("Version")}{self.yellow_text(":")} {self.cyan_text(f"v{self.version}")}\n      {self.green_text("Author")}{self.yellow_text(":")} {self.cyan_text("0x5ubt13")}\n')
 
         # Parse args
         self.parse_args()
@@ -967,7 +980,7 @@ class Kubenumerate():
         if not os.path.exists(self.pkl_recovery):
             Path.touch(self.pkl_recovery, 0o644)
 
-        if self.verbosity > 0:
+        if self.verbosity > 1:
             print(f'{self.yellow_text("[!]")} Launching trivy to scan every unique container image for vulns. This might take a while, please wait...\n{self.yellow_text("[!]")} Known issues: if stuck at 0, run: \n\ttrivy i --download-java-db-only')
             print(f'{self.cyan_text("[*]")} Scanning {self.yellow_text(f"{total_pods}")} pods detected...')
 
