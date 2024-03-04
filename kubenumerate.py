@@ -6,6 +6,7 @@ import json
 import os
 import pandas as pd
 from pathlib import Path
+import pexpect
 import pickle
 import shutil
 import subprocess
@@ -19,7 +20,7 @@ class Kubenumerate():
     """
 
     def __init__(self, args="", automount=False, cis=False, date=datetime.datetime.now().strftime("%b%y"), depr_api=False, excel_file="kubenumerate_results_v1_0.xlsx", hardened=True, kubeaudit_file="", kube_bench_file="", kubectl_pods_file="",
-                 kubectl_path="/tmp/kubenumerate_out/kubectl_output/", limits=True, namespace="-A", out_path="/tmp/kubenumerate_out/", pkl_recovery="", pods="", privesc=False, privileged=False, rbac_police=False, requisites=True, trivy_file="", verbosity=1, version="1.0.2", vuln_image=False):
+                 kubectl_path="/tmp/kubenumerate_out/kubectl_output/", limits=True, namespace="-A", out_path="/tmp/kubenumerate_out/", pkl_recovery="", pods="", privesc=False, privileged=False, rbac_police=False, requisites=[], trivy_file="", verbosity=1, version="1.0.2", vuln_image=False):
         """Initialize attributes"""
 
         self.args              = args
@@ -46,6 +47,13 @@ class Kubenumerate():
         self.verbosity         = verbosity
         self.version           = version
         self.vuln_image        = vuln_image
+
+        self.inst_kubeaudit    = inst_kubeaudit
+        self.inst_kubebench    = inst_kubebench
+        self.inst_kubectl      = inst_inst_kubectl
+        self.inst_trivy        = inst_trivy
+        self.install           = install
+
 
     def parse_args(self):
         """Parse args and return them"""
@@ -86,23 +94,106 @@ class Kubenumerate():
         """Check for kubeaudit, kube-bench and trivy. Exit if they are not present in the system"""
 
         if not shutil.which("kubeaudit"):
-            print(f'{self.red_text("[-]")} Please install kubeaudit: https://github.com/Shopify/kubeaudit')
-            self.requisites = False
+            self.requisites.append("kubeaudit")
         if not shutil.which("kube-bench"):
+            self.requisites.append("kube-bench")
+        if not shutil.which("kubectl"):
+            self.requisites.append("kubectl")
+        if not shutil.which("trivy"):
+            self.requisites.append("trivy")
+        
+        if len(self.requisites) > 0:
+            # ----------------------- Delete when ready from here -----------------------
+            print("This will trigger installation in further updates. It's not implemented yet so please install the following needed tools manually (or use the docker container provided):")
+            for tool in self.requisites:
+                print(f'\t{self.yellow_text("-", tool)}')
+            # --------------------------------- To here ---------------------------------
+            # self.install_requisites() # Uncommenting as it's not fully implemented yet
+        else:
+            print(f'{self.green_text("[+]")} All necessary software successfully detected in the system.')
+
+    def ask_for_permission(self):
+        """ Ask the user for permission to install needed software in the system """
+
+        print('The following tools are needed:')
+        for tool in self.requisites:
+            if tool == "kubeaudit":
+                self.inst_kubeaudit = True
+            elif tool == "kube-bench":
+                self.inst_kubebench = True
+            elif tool == "kubectl":
+                self.inst_kubectl = True
+            elif tool == "trivy":
+                self.inst_trivy = True
+            print(f'\t{self.yellow_text("-", tool)}')
+
+        print(f'{self.yellow_text("Brew")} (https://brew.sh), will also be installed to be used as package manager to install these.')
+
+        while True:
+            answer = input(f'{self.yellow_text("[!]")} Do you give your consent to install all the above? {self.cyan_text("[y/n]")}').strip().lower()
+            if not answer.startswith("y") and not answer.startswith("n"):
+                print(f'{self.red_text("[-]")} Incorrect answer registered. Please type "y" to accept or "n" to deny.')
+                continue
+
+            if answer.startswith("y"):
+                self.install = True
+                break
+
+            if answer.startswith("n"):
+                break
+
+        if self.install:
+            self.install_tool("brew")
+
+    def install_requisites(self):
+        """Check for kubeaudit, kube-bench and trivy. Offer installing them if they are not present in the system"""
+
+        self.ask_for_permission()
+
+        if self.inst_kubeaudit:
+            if self.install == False:
+                print(f'{self.red_text("[-]")} Please install kubeaudit: https://github.com/Shopify/kubeaudit')
+            else:
+                print(f'{self.cyan_text("[*]")} Installing kubeaudit...')
+        if not shutil.which("kube-bench"):
+            self.inst_kubebench = True
             print(f'{self.red_text("[-]")} Please install kube-bench: https://github.com/aquasecurity/kube-bench')
-            self.requisites = False
         if not shutil.which("kubectl"):
             print(f'{self.red_text("[-]")} Please install kubectl: https://kubernetes.io/docs/tasks/tools/#kubectl')
-            self.requisites = False
-        if not shutil.which("kubeaudit"):
+            self.inst_kubectl = True
+        if not shutil.which("trivy"):
+            self.inst_trivy = True
             print(f'{self.red_text("[-]")} Please install trivy: https://github.com/aquasecurity/trivy')
-            self.requisites = False
         if not self.requisites:
             #TODO: offer the user installing them for absolute laziness' sake
             sys.exit(2)
         
         if self.verbosity > 0:
             print(f'{self.green_text("[+]")} All necessary software successfully detected in the system.')
+
+    def install_tool(self, tool):
+        print(f'{self.cyan_text("*")} Installing {tool}...')
+
+        if tool == "brew":
+            try:
+                proc = subprocess.Popen('/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"', shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+                # Create a pexpect spawn object to interact with the process
+                child = pexpect.spawn(proc.stdout)
+                child.expect("Press RETURN/ENTER to continue or any other key to abort:")
+
+                # Send "Enter" to continue the installation
+                child.sendline()
+
+                # Wait for the installation to complete
+                child.expect(pexpect.EOF)
+
+                # Close the process
+                proc.terminate()
+            except Exception as e:
+                print("Error whilst installing brew:", e)
+        else:
+            subprocess.Popen(f"brew install {tool}", shell=True, executable="/bin/bash")
 
     def global_checks(self):
         """Perform other necessary cheks to ensure a correct execution"""
