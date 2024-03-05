@@ -15,28 +15,31 @@ Enter kubenumerate!
     ┌──(root㉿SubtleLabs)-[~]
     └─# kubenumerate -h
 
-    Kubenumerate - Scan your whole current context with just 1 command
-         Version: v1.0.2
-          Author: 0x5ubt13
+    __  __         __                                                 __                                                                                                                                                                       
+    |  |/  |.--.--.|  |--.-----.-----.--.--.--------.-----.----.---.-.|  |_.-----.                                                                                                                                                             
+    |     < |  |  ||  _  |  -__|     |  |  |        |  -__|   _|  _  ||   _|  -__|                                                                                                                                                             
+    |__|\__||_____||_____|_____|__|__|_____|__|__|__|_____|__| |___._||____|_____|                                                                                                                                                             
+                                                                                                                                                                                                                                               
+    v1.0.3                                                            By 0x5ubt13
     
-    usage: kubenumerate [-h] [--excel-out EXCEL_OUT] [--kubeaudit-out KUBEAUDIT_OUT] [--namespace NAMESPACE] [--output OUTPUT] [--trivy-file TRIVY_FILE] [--verbosity VERBOSITY]
+    usage: kubenumerate.py [-h] [--excel-out EXCEL_OUT] [--kubeaudit-out     KUBEAUDIT_OUT] [--namespace NAMESPACE] [--output OUTPUT] [--trivy-file     TRIVY_FILE] [--verbosity VERBOSITY]
     
-    Uses local kubeconfig file to launch kubeaudit, kube-bench, kubectl and trivy and parses all useful output to excel.
+    Uses local kubeconfig file to launch kubeaudit, kube-bench, kubectl and     trivy and parses all useful output to excel.
     
     options:
       -h, --help            show this help message and exit
       --excel-out EXCEL_OUT, -e EXCEL_OUT
-                            Select a different name for your excel file. Default: /tmp/kubenumerate_out/kubenumerate_results_v1_0.xlsx
+                            Select a different name for your excel file.     Default: kubenumerate_results_v1_0.xlsx
       --kubeaudit-out KUBEAUDIT_OUT, -a KUBEAUDIT_OUT
-                            Select an input kubeaudit json file to parse instead of running kubeaudit using your kubeconfig file
+                            Select an input kubeaudit json file to parse instead     of running kubeaudit using your kubeconfig file
       --namespace NAMESPACE, -n NAMESPACE
-                            Select a specific namespace to test, if your scope is restricted. Default: -A
+                            Select a specific namespace to test, if your scope     is restricted. Default: -A
       --output OUTPUT, -o OUTPUT
-                            Select a different folder for all the output (default /tmp/kubenumerate_out/)
+                            Select a different folder for all the output     (default /tmp/kubenumerate_out/)
       --trivy-file TRIVY_FILE, -t TRIVY_FILE
-                            Run trivy from a pods dump in json instead of running kubectl using your kubeconfig file
+                            Run trivy from a pods dump in json instead of     running kubectl using your kubeconfig file
       --verbosity VERBOSITY, -v VERBOSITY
-                            Select a verbosity level. (0 = quiet | default = 1 | verbose/debug = 2)
+                            Select a verbosity level. (0 = quiet | 1 = default |     2 = verbose/debug)
 
 
 ## Containerised version

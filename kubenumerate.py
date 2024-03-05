@@ -6,7 +6,6 @@ import json
 import os
 import pandas as pd
 from pathlib import Path
-import pexpect
 import pickle
 import shutil
 import subprocess
@@ -19,8 +18,9 @@ class Kubenumerate():
         PRs: https://github.com/0x5ubt13/kubenumerate
     """
 
-    def __init__(self, args="", automount=False, cis=False, date=datetime.datetime.now().strftime("%b%y"), depr_api=False, excel_file="kubenumerate_results_v1_0.xlsx", hardened=True, kubeaudit_file="", kube_bench_file="", kubectl_pods_file="",
-                 kubectl_path="/tmp/kubenumerate_out/kubectl_output/", limits=True, namespace="-A", out_path="/tmp/kubenumerate_out/", pkl_recovery="", pods="", privesc=False, privileged=False, rbac_police=False, requisites=[], trivy_file="", verbosity=1, version="1.0.2", vuln_image=False):
+    def __init__(self, args="", automount=False, cis=False, date=datetime.datetime.now().strftime("%b%y"), depr_api=False, excel_file="kubenumerate_results_v1_0.xlsx", hardened=True, inst_kubeaudit=False, inst_kubebench=False, 
+                 inst_kubectl=False, inst_trivy=False, install=False, kubeaudit_file="", kube_bench_file="", kubectl_pods_file="", kubectl_path="/tmp/kubenumerate_out/kubectl_output/", limits=True, namespace="-A", 
+                 out_path="/tmp/kubenumerate_out/", pkl_recovery="", pods="", privesc=False, privileged=False, rbac_police=False, requisites=[], trivy_file="", verbosity=1, version="1.0.3", vuln_image=False):
         """Initialize attributes"""
 
         self.args              = args
@@ -30,6 +30,11 @@ class Kubenumerate():
         self.depr_api          = depr_api
         self.excel_file        = excel_file
         self.hardened          = hardened
+        self.inst_kubeaudit    = inst_kubeaudit
+        self.inst_kubebench    = inst_kubebench
+        self.inst_kubectl      = inst_kubectl
+        self.inst_trivy        = inst_trivy
+        self.install           = install
         self.kubeaudit_file    = kubeaudit_file
         self.kube_bench_file   = kube_bench_file
         self.kubectl_path      = kubectl_path
@@ -47,13 +52,6 @@ class Kubenumerate():
         self.verbosity         = verbosity
         self.version           = version
         self.vuln_image        = vuln_image
-
-        self.inst_kubeaudit    = inst_kubeaudit
-        self.inst_kubebench    = inst_kubebench
-        self.inst_kubectl      = inst_inst_kubectl
-        self.inst_trivy        = inst_trivy
-        self.install           = install
-
 
     def parse_args(self):
         """Parse args and return them"""
@@ -93,6 +91,7 @@ class Kubenumerate():
     def check_requisites(self):
         """Check for kubeaudit, kube-bench and trivy. Exit if they are not present in the system"""
 
+        self.requisites = []
         if not shutil.which("kubeaudit"):
             self.requisites.append("kubeaudit")
         if not shutil.which("kube-bench"):
@@ -103,47 +102,9 @@ class Kubenumerate():
             self.requisites.append("trivy")
         
         if len(self.requisites) > 0:
-            # ----------------------- Delete when ready from here -----------------------
-            print("This will trigger installation in further updates. It's not implemented yet so please install the following needed tools manually (or use the docker container provided):")
-            for tool in self.requisites:
-                print(f'\t{self.yellow_text("-", tool)}')
-            # --------------------------------- To here ---------------------------------
-            # self.install_requisites() # Uncommenting as it's not fully implemented yet
+            self.install_requisites() 
         else:
             print(f'{self.green_text("[+]")} All necessary software successfully detected in the system.')
-
-    def ask_for_permission(self):
-        """ Ask the user for permission to install needed software in the system """
-
-        print('The following tools are needed:')
-        for tool in self.requisites:
-            if tool == "kubeaudit":
-                self.inst_kubeaudit = True
-            elif tool == "kube-bench":
-                self.inst_kubebench = True
-            elif tool == "kubectl":
-                self.inst_kubectl = True
-            elif tool == "trivy":
-                self.inst_trivy = True
-            print(f'\t{self.yellow_text("-", tool)}')
-
-        print(f'{self.yellow_text("Brew")} (https://brew.sh), will also be installed to be used as package manager to install these.')
-
-        while True:
-            answer = input(f'{self.yellow_text("[!]")} Do you give your consent to install all the above? {self.cyan_text("[y/n]")}').strip().lower()
-            if not answer.startswith("y") and not answer.startswith("n"):
-                print(f'{self.red_text("[-]")} Incorrect answer registered. Please type "y" to accept or "n" to deny.')
-                continue
-
-            if answer.startswith("y"):
-                self.install = True
-                break
-
-            if answer.startswith("n"):
-                break
-
-        if self.install:
-            self.install_tool("brew")
 
     def install_requisites(self):
         """Check for kubeaudit, kube-bench and trivy. Offer installing them if they are not present in the system"""
@@ -154,46 +115,109 @@ class Kubenumerate():
             if self.install == False:
                 print(f'{self.red_text("[-]")} Please install kubeaudit: https://github.com/Shopify/kubeaudit')
             else:
-                print(f'{self.cyan_text("[*]")} Installing kubeaudit...')
+                if self.inst_kubeaudit:
+                    self.install_tool("kubeaudit")
         if not shutil.which("kube-bench"):
             self.inst_kubebench = True
-            print(f'{self.red_text("[-]")} Please install kube-bench: https://github.com/aquasecurity/kube-bench')
+            if self.install == False:
+                print(f'{self.red_text("[-]")} Please install kube-bench: https://github.com/aquasecurity/kube-bench')
+            else:
+                if self.inst_kubebench:
+                    self.install_tool("kube-bench")
         if not shutil.which("kubectl"):
-            print(f'{self.red_text("[-]")} Please install kubectl: https://kubernetes.io/docs/tasks/tools/#kubectl')
+            if self.install == False:
+                print(f'{self.red_text("[-]")} Please install kubectl: https://kubernetes.io/docs/tasks/tools/#kubectl')
+            else:
+                if self.inst_kubectl:
+                    self.install_tool("kubectl")
             self.inst_kubectl = True
         if not shutil.which("trivy"):
-            self.inst_trivy = True
-            print(f'{self.red_text("[-]")} Please install trivy: https://github.com/aquasecurity/trivy')
-        if not self.requisites:
-            #TODO: offer the user installing them for absolute laziness' sake
+            if self.install == False:
+                print(f'{self.red_text("[-]")} Please install trivy: https://github.com/aquasecurity/trivy')
+            else:
+                if self.inst_trivy:
+                    self.install_tool("trivy")
+
+        if self.install == False:
+            print(f'{self.red_text("[-]")} Since no consent was given, this program is about to exit. Please install manually all components above.')
             sys.exit(2)
+
+        # Run again the check
+        self.check_requisites()
+
+    def ask_for_permission(self):
+        """Ask the user for permission to install needed software in the system"""
+
+        print(f'{self.cyan_text("[*]")} The following tools are needed:')
+        for tool in self.requisites:
+            if tool == "kubeaudit":
+                self.inst_kubeaudit = True
+            elif tool == "kube-bench":
+                self.inst_kubebench = True
+            elif tool == "kubectl":
+                self.inst_kubectl = True
+            elif tool == "trivy":
+                self.inst_trivy = True
+
+            print(f'\t- {self.yellow_text(f"{tool}")}')
+
+        print(f'{self.yellow_text("[!]")} {self.cyan_text("Brew")} (https://brew.sh), will be used as package manager to install these. If it\'s not in the system, it will also be installed.\n')
+
+        while True:
+            answer = input(f'{self.yellow_text("[!]")} Do you give your consent to install all the above? {self.cyan_text("[y/n]")} ').strip().lower()
+            if not answer.startswith("y") and not answer.startswith("n"):
+                print(f'{self.red_text("[-]")} Incorrect answer registered. Please type "y" to accept or "n" to deny.')
+                continue
+
+            if answer.startswith("y"):
+                self.install = True
+                break
+
+            if answer.startswith("n"):
+                self.install = False
+                break
         
-        if self.verbosity > 0:
-            print(f'{self.green_text("[+]")} All necessary software successfully detected in the system.')
+        if not shutil.which("brew"):
+            if self.install:
+                self.install_tool("brew")
 
     def install_tool(self, tool):
-        print(f'{self.cyan_text("*")} Installing {tool}...')
+        """Install the passed tool using brew, or install brew using bash"""
+
+        print(f'\n{self.cyan_text("[*]")} Installing {tool}...')
+        shell = os.environ['SHELL']
 
         if tool == "brew":
             try:
-                proc = subprocess.Popen('/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"', shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                subprocess.run(f'/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"', shell=True)
+                
+                # Add homebrew to user's PATH
+                if "zsh" in shell:
+                    cmd = f"(echo; echo \'eval \"$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)\"\') >> /home/{os.environ['USER']}/.zshrc; eval \"$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)\""
+                elif "bash" in shell:
+                    cmd = f"(echo; echo 'eval \"$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)\"') >> /home/{os.environ['USER']}/.bashrc; eval \"$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)\""
+                subprocess.run(cmd, shell=True, executable=shell)
 
-                # Create a pexpect spawn object to interact with the process
-                child = pexpect.spawn(proc.stdout)
-                child.expect("Press RETURN/ENTER to continue or any other key to abort:")
+                # Add homebrew to user's PATH
+                if "zsh" in shell:
+                    cmd = f"source /home/{os.environ['USER']}/.zshrc"
+                elif "bash" in shell:
+                    cmd = f"source /home/{os.environ['USER']}/.bashrc"
+                subprocess.run(cmd, shell=True, executable=shell)
 
-                # Send "Enter" to continue the installation
-                child.sendline()
-
-                # Wait for the installation to complete
-                child.expect(pexpect.EOF)
-
-                # Close the process
-                proc.terminate()
             except Exception as e:
-                print("Error whilst installing brew:", e)
+                print(f'{self.red_text("[-]")} Error whilst installing brew: {e}')
+                sys.exit(1)
+        elif tool == "kube-bench":
+            subprocess.run("mkdir /tmp/kube-bench; curl -Lo /tmp/kube-bench/kube-bench_0.7.2_linux_amd64.tar.gz https://github.com/aquasecurity/kube-bench/releases/download/v0.7.2/kube-bench_0.7.2_linux_amd64.tar.gz", shell=True, executable=shell)
+            subprocess.run("cd /tmp/kube-bench; tar -xvf /tmp/kube-bench/kube-bench_0.7.2_linux_amd64.tar.gz", shell=True, executable=shell)
+            subprocess.run("chmod +x /tmp/kube-bench/kube-bench; ln -s /tmp/kube-bench/kube-bench /home/linuxbrew/.linuxbrew/bin/kube-bench", shell=True, executable=shell)
         else:
-            subprocess.Popen(f"brew install {tool}", shell=True, executable="/bin/bash")
+            try:
+                subprocess.run(f"brew install {tool}", shell=True, executable=shell)
+            except Exception as e:
+                print(f'{self.red_text("[-]")} Error whilst installing {tool}: {e}')
+                sys.exit(1)
 
     def global_checks(self):
         """Perform other necessary cheks to ensure a correct execution"""
@@ -206,7 +230,7 @@ class Kubenumerate():
         if self.args.namespace is not None and not "-A":
             self.namespace = f'-n {self.args.namespace}'
 
-        # Check path exists and create it if not    
+        # Check path exists and create it if not
         try:
             os.makedirs(self.out_path)
             if self.verbosity > 0:
@@ -378,14 +402,16 @@ class Kubenumerate():
                 self.show_status_bar(i + 1, "resources", total_resources, start=start)
 
         except ZeroDivisionError:
-            print(f'{self.red_text["-"]} No resources were found. Are you connected to the cluster?')
+            print(f'{self.red_text("[-]")} Error: No resources were found. Are you connected to the cluster?')
 
         print("\n", flush=True, file=sys.stderr)
 
     def Run(self):
         """Class main method. Launch kubeaudit, kube-bench and trivy and parse them"""
 
-        print(f'\n{self.green_text("Kubenumerate")}{self.yellow_text(":")} {self.cyan_text(f"Scan your whole current context with just 1 command")}\n     {self.green_text("Version")}{self.yellow_text(":")} {self.cyan_text(f"v{self.version}")}\n      {self.green_text("Author")}{self.yellow_text(":")} {self.cyan_text("0x5ubt13")}\n')
+        # Print banner
+        if self.verbosity > 0:
+            self.print_banner()
 
         # Parse args
         self.parse_args()
@@ -1257,6 +1283,14 @@ class Kubenumerate():
         if self.rbac_police:
             print(f'{self.yellow_text("[!]")} Running RBAC Police next might be interesting...\n\t(https://github.com/PaloAltoNetworks/rbac-police)')
 
+    def print_banner(self):
+        banner = """
+__  __         __                                                 __         
+|  |/  |.--.--.|  |--.-----.-----.--.--.--------.-----.----.---.-.|  |_.-----.
+|     < |  |  ||  _  |  -__|     |  |  |        |  -__|   _|  _  ||   _|  -__|
+|__|\__||_____||_____|_____|__|__|_____|__|__|__|_____|__| |___._||____|_____|
+        """
+        print(f'{self.cyan_text(banner)}\n{self.yellow_text(f"v{self.version}")}                                                            {self.green_text("By 0x5ubt13")}\n')
 
 def main():
     instance = Kubenumerate()
