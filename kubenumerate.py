@@ -18,9 +18,9 @@ class Kubenumerate():
         PRs: https://github.com/0x5ubt13/kubenumerate
     """
 
-    def __init__(self, args="", automount=False, cis=False, date=datetime.datetime.now().strftime("%b%y"), depr_api=False, excel_file="kubenumerate_results_v1_0.xlsx", hardened=True, inst_kubeaudit=False, inst_kubebench=False, 
+    def __init__(self, args="", automount=False, cis=False, date=datetime.datetime.now().strftime("%b%y"), depr_api=False, dry_run=False, excel_file="kubenumerate_results_v1_0.xlsx", hardened=True, inst_kubeaudit=False, inst_kubebench=False, 
                  inst_kubectl=False, inst_trivy=False, install=False, kubeaudit_file="", kube_bench_file="", kubectl_pods_file="", kubectl_path="/tmp/kubenumerate_out/kubectl_output/", limits=True, namespace="-A", 
-                 out_path="/tmp/kubenumerate_out/", pkl_recovery="", pods="", privesc=False, privileged=False, rbac_police=False, requisites=[], trivy_file="", verbosity=1, version="1.0.3", vuln_image=False):
+                 out_path="/tmp/kubenumerate_out/", pkl_recovery="", pods="", privesc=False, privileged=False, rbac_police=False, requisites=[], trivy_file="", verbosity=1, version="1.0.4", vuln_image=False):
         """Initialize attributes"""
 
         self.args              = args
@@ -28,6 +28,7 @@ class Kubenumerate():
         self.cis_detected      = cis
         self.date              = date
         self.depr_api          = depr_api
+        self.dry_run           = dry_run
         self.excel_file        = excel_file
         self.hardened          = hardened
         self.inst_kubeaudit    = inst_kubeaudit
@@ -59,14 +60,19 @@ class Kubenumerate():
         parser = argparse.ArgumentParser(
             description='Uses local kubeconfig file to launch kubeaudit, kube-bench, kubectl and trivy and parses all useful output to excel.')
         parser.add_argument(
+            '--dry-run',
+            '-d',
+            action='store_true',
+            help="Don't contact the Kubernetes API - do all work locally")
+        parser.add_argument(
             '--excel-out',
             '-e',
             help="Select a different name for your excel file. Default: kubenumerate_results_v1_0.xlsx",
             default='kubenumerate_results_v1_0.xlsx')
         parser.add_argument(
-            '--kubeaudit-out',
-            '-a',
-            help="Select an input kubeaudit json file to parse instead of running kubeaudit using your kubeconfig file")
+            '--kubeaudit-file',
+            '-f',
+            help="Select an input kubeaudit json file to parse instead of running kubeaudit using your kubeconfig file.")
         parser.add_argument(
             '--namespace',
             '-n',
@@ -75,7 +81,7 @@ class Kubenumerate():
         parser.add_argument(
             '--output',
             '-o',
-            help="Select a different folder for all the output (default /tmp/kubenumerate_out/)",
+            help="Select a different folder for all the output. Default: '/tmp/kubenumerate_out/'",
             default=f"/tmp/kubenumerate_out/")
         parser.add_argument(
             '--trivy-file',
@@ -190,7 +196,6 @@ class Kubenumerate():
         if tool == "brew":
             try:
                 subprocess.run(f'/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"', shell=True)
-                
                 # Add homebrew to user's PATH
                 if "zsh" in shell:
                     cmd = f"(echo; echo \'eval \"$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)\"\') >> /home/{os.environ['USER']}/.zshrc; eval \"$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)\""
@@ -230,6 +235,27 @@ class Kubenumerate():
         if self.args.namespace is not None and not "-A":
             self.namespace = f'-n {self.args.namespace}'
 
+        if self.args.dry_run:
+            self.dry_run = True
+
+        if self.args.kubeaudit_file is not None:
+            # Read filename from flag
+            self.kubeaudit_file = self.args.kubeaudit_file
+            if self.verbosity > 0:
+                print(f'{self.green_text("[+]")} Using passed argument "{self.cyan_text(self.kubeaudit_file)}" file as input file for kubeaudit to avoid sending unnecesary requests to the cluster.')
+        else:
+            # Use default
+            self.kubeaudit_file = f"{self.out_path}kubeaudit_all.json"
+
+        # Use pods file passed for trivy
+        if self.args.trivy_file is not None:
+            self.trivy_file = f"{os.getcwd()}/{self.args.trivy_file}"
+            if os.path.exists(self.trivy_file):
+                if self.verbosity > 0:
+                    print(f'{self.green_text("[+]")} Using passed argument "{self.cyan_text(self.trivy_file)}" file as input file for Trivy to avoid sending unnecesary requests to the cluster.')
+                with open(self.trivy_file, "r") as f:
+                    self.pods = json.loads(f.read())
+
         # Check path exists and create it if not
         try:
             os.makedirs(self.out_path)
@@ -240,13 +266,14 @@ class Kubenumerate():
                 print(f'{self.green_text("[+]")} Using existing "{self.cyan_text(self.out_path)}" folder for all output.')
 
         # Do the same for the kubectl output folder
-        try:
-            os.makedirs(self.kubectl_path)
-            if self.verbosity > 0:
-                print(f'{self.green_text("[+]")} Folder "{self.cyan_text(self.kubectl_path)}" created successfully.')
-        except OSError:
-            if self.verbosity > 0:
-                print(f'{self.green_text("[+]")} Using existing "{self.cyan_text(self.kubectl_path)}" folder for all output.')
+        if not self.dry_run:
+            try:
+                os.makedirs(self.kubectl_path)
+                if self.verbosity > 0:
+                    print(f'{self.green_text("[+]")} Folder "{self.cyan_text(self.kubectl_path)}" created successfully.')
+            except OSError:
+                if self.verbosity > 0:
+                    print(f'{self.green_text("[+]")} Using existing "{self.cyan_text(self.kubectl_path)}" folder for all kubectl output.')
 
         # Construct excel filename
         self.parse_excel_filename()
@@ -264,13 +291,6 @@ class Kubenumerate():
 
     def launch_kubeaudit(self):
         """Check whether a previous kubeaudit json file already exists. If not, launch kubeaudit"""
-
-        if self.args.kubeaudit_out is not None:
-            # Read filename from flag
-            self.kubeaudit_file = self.args.kubeaudit_out
-        else:
-            # Use default
-            self.kubeaudit_file = f"{self.out_path}kubeaudit_all.json"
 
         # Check if exists
         if os.path.exists(self.kubeaudit_file):
@@ -299,8 +319,7 @@ class Kubenumerate():
     def launch_kubectl(self):
         """Get everything from kubectl"""
 
-        # Gather all other possible kubectl output in case access to the
-        # cluster is lost
+        # Gather all other possible kubectl output in case access to the cluster is lost
         self.kubectl_get_all_yaml_and_json()
 
         # Populate self.pods for trivy
@@ -406,6 +425,35 @@ class Kubenumerate():
 
         print("\n", flush=True, file=sys.stderr)
 
+    def launch_gatherer_tools(self):
+        """Launch kubeaudit, kube-bench and trivy"""
+
+        # Kill switch for the flag --dry-run
+        if self.dry_run:
+            print(f'{self.cyan_text("[*]")} --dry-run flag detected. Skipping launching gatherer tools.')
+
+            # Creating empty kube-bench file for the script to work
+            self.kube_bench_file = "/tmp/kube-bench_dummy_file.json"
+            dummy_data = {}
+
+            with open(self.kube_bench_file, "w") as dummy_f:
+                json.dump(dummy_data, dummy_f)
+            
+            return
+        
+        self.launch_kubectl()
+        self.launch_kubeaudit()
+        self.launch_kube_bench()
+
+    def clean_up(self):
+        """Clean up empty files, if generated"""
+
+        #TODO: Make all empty files created with kubectl also disappear with this function
+        if self.dry_run:
+            os.remove(self.kube_bench_file)
+            if self.args.verbosity > 1: 
+                print(f"File '{self.kube_bench_file}' deleted successfully.")
+
     def Run(self):
         """Class main method. Launch kubeaudit, kube-bench and trivy and parse them"""
 
@@ -429,9 +477,7 @@ class Kubenumerate():
             print(f'\n{self.cyan_text("[*]")} ----- Running kubectl, kubeaudit and kube-bench -----')
 
         # Run tools
-        self.launch_kubectl()
-        self.launch_kubeaudit()
-        self.launch_kube_bench()
+        self.launch_gatherer_tools()
 
         if self.verbosity > 0:
             print(f'\n{self.cyan_text("[*]")} ----- Parsing kubeaudit, kube-bench and trivy output, please wait... -----')
@@ -461,12 +507,12 @@ class Kubenumerate():
                         print(f'{self.green_text("[+]")} Kubeaudit successfuly parsed')
 
                     # Run Kube-bench methods
-                    kube_bench_dict = json.load(kube_bench_f)
-                    kube_bench_df = pd.json_normalize(
-                        kube_bench_dict, record_path=['Controls', 'tests', 'results'])
-                    self.cis(kube_bench_df, writer)
-                    if self.verbosity > 0:
-                        print(f'{self.green_text("[+]")} Kube-bench successfuly parsed')
+                    if not self.dry_run:
+                        kube_bench_dict = json.load(kube_bench_f)
+                        kube_bench_df = pd.json_normalize(kube_bench_dict, record_path=['Controls', 'tests', 'results'])
+                        self.cis(kube_bench_df, writer)
+                        if self.verbosity > 0:
+                            print(f'{self.green_text("[+]")} Kube-bench successfuly parsed')
 
                     # Run trivy methods
                     self.trivy_parser(writer)
@@ -662,7 +708,7 @@ class Kubenumerate():
                 "ResourceNamespace", "ResourceKind", "ResourceName", "Container", "Metadata", "msg"]]
             df_missing_capabilities_or_seccontext.to_excel(
                 writer,
-                sheet_name="Caps - missing",
+                sheet_name="Capabilities - Missing",
                 index=False,
                 freeze_panes=(1,0))
             self.hardened = False
@@ -676,7 +722,7 @@ class Kubenumerate():
                 "ResourceNamespace", "ResourceKind", "ResourceName", "Container", "Metadata", "msg"]]
             df_added_capabilities.to_excel(
                 writer,
-                sheet_name="Caps - Added",
+                sheet_name="Capabilities - Added",
                 index=False,
                 freeze_panes=(1,0))
             self.hardened = False
@@ -690,7 +736,7 @@ class Kubenumerate():
                 "ResourceNamespace", "ResourceKind", "ResourceName", "Container", "msg"]]
             df_caps_should_drop.to_excel(
                 writer,
-                sheet_name="Caps - Not Drop All",
+                sheet_name="Capabilities - No Drop All",
                 index=False,
                 freeze_panes=(1,0))
             self.hardened = False
@@ -767,7 +813,7 @@ class Kubenumerate():
                 "ResourceNamespace", "ResourceKind", "ResourceName", "msg"]]
             df_ns_hostnetwork_true.to_excel(
                 writer,
-                sheet_name="Host ns - hostNetwork true",
+                sheet_name="Host Namespace-hostNetwork true",
                 index=False,
                 freeze_panes=(1,0))
             self.hardened = False
@@ -843,7 +889,7 @@ class Kubenumerate():
                 "ResourceKind", "ResourceName", "msg"]]
             df_default_deny_missing.to_excel(
                 writer,
-                sheet_name="NetPol - Missing default deny",
+                sheet_name="NetworkPolicies - No default deny",
                 index=False,
                 freeze_panes=(1,0))
             self.hardened = False
@@ -858,7 +904,7 @@ class Kubenumerate():
                 "ResourceKind", "ResourceName", "msg"]]
             df_allow_all.to_excel(
                 writer,
-                sheet_name="NetPol - Allow all",
+                sheet_name="NetworkPolicies - Allow all",
                 index=False,
                 freeze_panes=(1,0))
             self.hardened = False
@@ -921,7 +967,7 @@ class Kubenumerate():
                 "ResourceNamespace", "ResourceKind", "ResourceName", "Container", "msg"]]
             df_AllowPrivilegeEscalationNil.to_excel(
                 writer,
-                sheet_name="Privesc - Nil",
+                sheet_name="PrivilegeEscalation - Nil",
                 index=False,
                 freeze_panes=(1,0))
             self.privesc_set = False
@@ -935,7 +981,7 @@ class Kubenumerate():
                 "ResourceNamespace", "ResourceKind", "ResourceName", "Container", "msg"]]
             df_AllowPrivilegeEscalationTrue.to_excel(
                 writer,
-                sheet_name="Privesc - True",
+                sheet_name="PrivilegeEscalation - True",
                 index=False,
                 freeze_panes=(1,0))
             self.privesc_set = False
@@ -982,7 +1028,7 @@ class Kubenumerate():
                 "ResourceNamespace", "ResourceKind", "ResourceName", "Container", "msg"]]
             df_ReadOnlyRootFilesystemNil.to_excel(
                 writer, 
-                sheet_name="Root FS - ReadOnly Nil", 
+                sheet_name="Root FileSystem - ReadOnly Nil", 
                 index=False,
                 freeze_panes=(1,0))
             self.hardened = False
@@ -1082,9 +1128,11 @@ class Kubenumerate():
         try:
             pods = self.pods.get("items", [])
         except AttributeError:
-            print(f'{self.red_text("[-]")} No pods detected, aborting...\n{self.red_text("[-]")} Something was ')
+            print(f'{self.red_text("[-]")} No pods detected, aborting...') #\n{self.red_text("[-]")} Something was ')
+            return
         except Exception as e:
             print(f'{self.red_text("[-]")} An error occurred: {e}')
+
         total_pods = len(pods)
         if total_pods == 0:
             print(f'{self.red_text("[-]")} No pods detected, aborting...\n{self.red_text("[-]")} Please check the permissions of your current role with the following command:\n\t{self.yellow_text("kubectl auth can-i --list")}')
