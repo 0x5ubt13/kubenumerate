@@ -889,7 +889,7 @@ class Kubenumerate():
                 "ResourceKind", "ResourceName", "msg"]]
             df_default_deny_missing.to_excel(
                 writer,
-                sheet_name="NetworkPolicies - No default deny",
+                sheet_name="NetworkPolicies - No deny",
                 index=False,
                 freeze_panes=(1,0))
             self.hardened = False
