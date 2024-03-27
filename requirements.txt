@@ -2,3 +2,4 @@ bottleneck>=1.3.6
 pandas>=2.2.1
 pyarrow
 xlsxwriter
+pyyaml

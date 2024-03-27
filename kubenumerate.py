@@ -11,6 +11,7 @@ import shutil
 import subprocess
 import sys
 import time
+import yaml
 
 
 class Kubenumerate():
@@ -19,8 +20,8 @@ class Kubenumerate():
     """
 
     def __init__(self, args="", automount=False, cis=False, date=datetime.datetime.now().strftime("%b%y"), depr_api=False, dry_run=False, excel_file="kubenumerate_results_v1_0.xlsx", hardened=True, inst_kubeaudit=False, inst_kubebench=False, 
-                 inst_kubectl=False, inst_trivy=False, install=False, kubeaudit_file="", kube_bench_file="", kubectl_pods_file="", kubectl_path="/tmp/kubenumerate_out/kubectl_output/", limits=True, namespace="-A", 
-                 out_path="/tmp/kubenumerate_out/", pkl_recovery="", pods="", privesc=False, privileged=False, rbac_police=False, requisites=[], trivy_file="", verbosity=1, version="1.0.4", vuln_image=False):
+                 inst_kubectl=False, inst_trivy=False, install=False, kubeaudit_file="", kube_bench_file="", kubeconfig_path=f"/home/{os.environ['USER']}/.kube/config", kubectl_pods_file="", kubectl_path="/tmp/kubenumerate_out/kubectl_output/", limits=True, namespace="-A", 
+                 out_path="/tmp/kubenumerate_out/", pkl_recovery="", pods="", privesc=False, privileged=False, rbac_police=False, requisites=[], trivy_file="", verbosity=1, version="1.0.5", vuln_image=False):
         """Initialize attributes"""
 
         self.args              = args
@@ -38,6 +39,7 @@ class Kubenumerate():
         self.install           = install
         self.kubeaudit_file    = kubeaudit_file
         self.kube_bench_file   = kube_bench_file
+        self.kubeconfig_path   = kubeconfig_path
         self.kubectl_path      = kubectl_path
         self.kubectl_pods_file = kubectl_pods_file
         self.limits_set        = limits
@@ -73,6 +75,10 @@ class Kubenumerate():
             '--kubeaudit-file',
             '-f',
             help="Select an input kubeaudit json file to parse instead of running kubeaudit using your kubeconfig file.")
+        parser.add_argument(
+            '--kubeconfig',
+            '-k',
+            help="Select a specific Kubeconfig file you want to use")
         parser.add_argument(
             '--namespace',
             '-n',
@@ -195,7 +201,7 @@ class Kubenumerate():
 
         if tool == "brew":
             try:
-                subprocess.run(f'/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"', shell=True)
+                subprocess.run(f'/bin/bash -c "$(curl -fsSLk https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"', shell=True)
                 # Add homebrew to user's PATH
                 if "zsh" in shell:
                     cmd = f"(echo; echo \'eval \"$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)\"\') >> /home/{os.environ['USER']}/.zshrc; eval \"$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)\""
@@ -205,16 +211,16 @@ class Kubenumerate():
 
                 # Add homebrew to user's PATH
                 if "zsh" in shell:
-                    cmd = f"source /home/{os.environ['USER']}/.zshrc"
+                    cmd = f"\PATH=\"$PATH:/home/linuxbrew/.linuxbrew/bin\"; source /home/{os.environ['USER']}/.zshrc"
                 elif "bash" in shell:
-                    cmd = f"source /home/{os.environ['USER']}/.bashrc"
+                    cmd = f"\PATH=\"$PATH:/home/linuxbrew/.linuxbrew/bin\"; source /home/{os.environ['USER']}/.bashrc"
                 subprocess.run(cmd, shell=True, executable=shell)
 
             except Exception as e:
                 print(f'{self.red_text("[-]")} Error whilst installing brew: {e}')
                 sys.exit(1)
         elif tool == "kube-bench":
-            subprocess.run("mkdir /tmp/kube-bench; curl -Lo /tmp/kube-bench/kube-bench_0.7.2_linux_amd64.tar.gz https://github.com/aquasecurity/kube-bench/releases/download/v0.7.2/kube-bench_0.7.2_linux_amd64.tar.gz", shell=True, executable=shell)
+            subprocess.run("mkdir /tmp/kube-bench; curl -Lok /tmp/kube-bench/kube-bench_0.7.2_linux_amd64.tar.gz https://github.com/aquasecurity/kube-bench/releases/download/v0.7.2/kube-bench_0.7.2_linux_amd64.tar.gz", shell=True, executable=shell)
             subprocess.run("cd /tmp/kube-bench; tar -xvf /tmp/kube-bench/kube-bench_0.7.2_linux_amd64.tar.gz", shell=True, executable=shell)
             subprocess.run("chmod +x /tmp/kube-bench/kube-bench; ln -s /tmp/kube-bench/kube-bench /home/linuxbrew/.linuxbrew/bin/kube-bench", shell=True, executable=shell)
         else:
@@ -274,6 +280,22 @@ class Kubenumerate():
             except OSError:
                 if self.verbosity > 0:
                     print(f'{self.green_text("[+]")} Using existing "{self.cyan_text(self.kubectl_path)}" folder for all kubectl output.')
+
+        # Check which kubeconfig file will be used and print current context
+        if self.args.kubeconfig is not None:
+            self.kubeconfig_path = self.args.kubeconfig
+
+        try:
+            with open(self.kubeconfig_path, 'r') as kubeconfig_file:
+                kubeconfig = yaml.safe_load(kubeconfig_file)
+
+            current_context = kubeconfig.get('current-context')
+            
+            print(f'{self.green_text("[+]")} Kubeconfig successfully loaded from {self.yellow_text(f"{self.kubeconfig_path}")}')
+            print(f'{self.green_text("[+]")} Current context to be scanned: {self.yellow_text(f"{current_context}")}')
+        
+        except Exception as e:
+            print(f'{self.red_text("[-]")} Error loading kubeconfig file: {e}')
 
         # Construct excel filename
         self.parse_excel_filename()
