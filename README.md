@@ -12,34 +12,36 @@ Enter kubenumerate!
 
 ## Usage
 
-    ┌──(root㉿SubtleLabs)-[~]
+    ┌──(subtle㉿SubtleLabs)-[~]
     └─# kubenumerate -h
 
-     __  __         __                                                 __                                                                                                                                                                        
-    |  |/  |.--.--.|  |--.-----.-----.--.--.--------.-----.----.---.-.|  |_.-----.                                                                                                                                                              
-    |     < |  |  ||  _  |  -__|     |  |  |        |  -__|   _|  _  ||   _|  -__|                                                                                                                                                              
-    |__|\__||_____||_____|_____|__|__|_____|__|__|__|_____|__| |___._||____|_____|                                                                                                                                                              
-                                                                                                                                                                                                                                                    
+    __  __         __                                                 __         
+    |  |/  |.--.--.|  |--.-----.-----.--.--.--------.-----.----.---.-.|  |_.-----.
+    |     < |  |  ||  _  |  -__|     |  |  |        |  -__|   _|  _  ||   _|  -__|
+    |__|\__||_____||_____|_____|__|__|_____|__|__|__|_____|__| |___._||____|_____|
+            
     v1.0.5                                                            By 0x5ubt13
-    
-    usage: kubenumerate [-h] [--dry-run] [--excel-out EXCEL_OUT] [--kubeaudit-file KUBEAUDIT_FILE] [--namespace NAMESPACE] [--output OUTPUT] [--trivy-file TRIVY_FILE] [--verbosity VERBOSITY]
-    
+
+    usage: kubenumerate.py [-h] [--dry-run] [--excel-out EXCEL_OUT] [--kubeaudit-file KUBEAUDIT_FILE] [--kubeconfig KUBECONFIG] [--namespace NAMESPACE] [--output OUTPUT] [--trivy-file TRIVY_FILE] [--verbosity VERBOSITY]
+
     Uses local kubeconfig file to launch kubeaudit, kube-bench, kubectl and trivy and parses all useful output to excel.
-    
+
     options:
-      -h, --help            show this help message and exit
-      --dry-run, -d         Don't contact the Kubernetes API - do all work offline
-      --excel-out EXCEL_OUT, -e EXCEL_OUT
+    -h, --help            show this help message and exit
+    --dry-run, -d         Don't contact the Kubernetes API - do all work locally
+    --excel-out EXCEL_OUT, -e EXCEL_OUT
                             Select a different name for your excel file. Default: kubenumerate_results_v1_0.xlsx
-      --kubeaudit-file KUBEAUDIT_FILE, -f KUBEAUDIT_FILE
+    --kubeaudit-file KUBEAUDIT_FILE, -f KUBEAUDIT_FILE
                             Select an input kubeaudit json file to parse instead of running kubeaudit using your kubeconfig file.
-      --namespace NAMESPACE, -n NAMESPACE
+    --kubeconfig KUBECONFIG, -k KUBECONFIG
+                            Select a specific Kubeconfig file you want to use
+    --namespace NAMESPACE, -n NAMESPACE
                             Select a specific namespace to test, if your scope is restricted. Default: -A
-      --output OUTPUT, -o OUTPUT
+    --output OUTPUT, -o OUTPUT
                             Select a different folder for all the output. Default: '/tmp/kubenumerate_out/'
-      --trivy-file TRIVY_FILE, -t TRIVY_FILE
+    --trivy-file TRIVY_FILE, -t TRIVY_FILE
                             Run trivy from a pods dump in json instead of running kubectl using your kubeconfig file
-      --verbosity VERBOSITY, -v VERBOSITY
+    --verbosity VERBOSITY, -v VERBOSITY
                             Select a verbosity level. (0 = quiet | 1 = default | 2 = verbose/debug)
 
 ## Installation

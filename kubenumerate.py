@@ -20,8 +20,8 @@ class Kubenumerate():
     """
 
     def __init__(self, args="", automount=False, cis=False, date=datetime.datetime.now().strftime("%b%y"), depr_api=False, dry_run=False, excel_file="kubenumerate_results_v1_0.xlsx", hardened=True, inst_kubeaudit=False, inst_kubebench=False, 
-                 inst_kubectl=False, inst_trivy=False, install=False, kubeaudit_file="", kube_bench_file="", kubeconfig_path=f"/home/{os.environ['USER']}/.kube/config", kubectl_pods_file="", kubectl_path="/tmp/kubenumerate_out/kubectl_output/", limits=True, namespace="-A", 
-                 out_path="/tmp/kubenumerate_out/", pkl_recovery="", pods="", privesc=False, privileged=False, rbac_police=False, requisites=[], trivy_file="", verbosity=1, version="1.0.5", vuln_image=False):
+                 inst_kubectl=False, inst_trivy=False, install=False, kubeaudit_bin="kubeaudit", kubeaudit_file="", kube_bench_bin="kube-bench", kube_bench_file="", kubeconfig_path=f"/home/{os.environ['USER']}/.kube/config", kubectl_pods_file="", kubectl_bin="kubectl", kubectl_path="/tmp/kubenumerate_out/kubectl_output/", limits=True, namespace="-A", 
+                 out_path="/tmp/kubenumerate_out/", pkl_recovery="", pods="", privesc=False, privileged=False, rbac_police=False, requisites=[], trivy_bin="trivy", trivy_file="", verbosity=1, version="1.0.5", vuln_image=False):
         """Initialize attributes"""
 
         self.args              = args
@@ -37,9 +37,12 @@ class Kubenumerate():
         self.inst_kubectl      = inst_kubectl
         self.inst_trivy        = inst_trivy
         self.install           = install
+        self.kubeaudit_bin     = kubeaudit_bin
         self.kubeaudit_file    = kubeaudit_file
+        self.kube_bench_bin    = kube_bench_bin
         self.kube_bench_file   = kube_bench_file
         self.kubeconfig_path   = kubeconfig_path
+        self.kubectl_bin       = kubectl_bin
         self.kubectl_path      = kubectl_path
         self.kubectl_pods_file = kubectl_pods_file
         self.limits_set        = limits
@@ -50,6 +53,7 @@ class Kubenumerate():
         self.privileged_flag   = privileged
         self.rbac_police       = rbac_police
         self.requisites        = requisites
+        self.trivy_bin         = trivy_bin
         self.trivy_file        = trivy_file
         self.pkl_recovery      = pkl_recovery
         self.verbosity         = verbosity
@@ -105,13 +109,25 @@ class Kubenumerate():
 
         self.requisites = []
         if not shutil.which("kubeaudit"):
-            self.requisites.append("kubeaudit")
+            if os.path.isfile('/home/linuxbrew/.linuxbrew/bin/kubeaudit'):
+                self.kubeaudit_bin="/home/linuxbrew/.linuxbrew/bin/kubeaudit"
+            else:
+                self.requisites.append("kubeaudit")
         if not shutil.which("kube-bench"):
-            self.requisites.append("kube-bench")
+            if os.path.isfile('/tmp/kube-bench/kube-bench'):
+                self.kube_bench_bin="/tmp/kube-bench/kube-bench"
+            else:
+                self.requisites.append("kubeaudit")
         if not shutil.which("kubectl"):
-            self.requisites.append("kubectl")
+            if os.path.isfile('/home/linuxbrew/.linuxbrew/bin/kubectl'):
+                self.kubectl_bin="/home/linuxbrew/.linuxbrew/bin/kubectl"
+            else:
+                self.requisites.append("kubectl")
         if not shutil.which("trivy"):
-            self.requisites.append("trivy")
+            if os.path.isfile('/home/linuxbrew/.linuxbrew/bin/trivy'):
+                self.trivy_bin="/home/linuxbrew/.linuxbrew/bin/trivy"
+            else:
+                self.requisites.append("trivy")
         
         if len(self.requisites) > 0:
             self.install_requisites() 
@@ -128,27 +144,31 @@ class Kubenumerate():
                 print(f'{self.red_text("[-]")} Please install kubeaudit: https://github.com/Shopify/kubeaudit')
             else:
                 if self.inst_kubeaudit:
-                    self.install_tool("kubeaudit")
+                    if not os.path.isfile('/home/linuxbrew/.linuxbrew/bin/kubeaudit'):
+                        self.install_tool("kubeaudit")
         if not shutil.which("kube-bench"):
             self.inst_kubebench = True
             if self.install == False:
                 print(f'{self.red_text("[-]")} Please install kube-bench: https://github.com/aquasecurity/kube-bench')
             else:
                 if self.inst_kubebench:
-                    self.install_tool("kube-bench")
+                    if not os.path.isfile('/tmp/kube-bench/kube-bench'):
+                        self.install_tool("kube-bench")
         if not shutil.which("kubectl"):
             if self.install == False:
                 print(f'{self.red_text("[-]")} Please install kubectl: https://kubernetes.io/docs/tasks/tools/#kubectl')
             else:
                 if self.inst_kubectl:
-                    self.install_tool("kubectl")
+                    if not os.path.isfile('/home/linuxbrew/.linuxbrew/bin/kubectl'):
+                        self.install_tool("kubectl")
             self.inst_kubectl = True
         if not shutil.which("trivy"):
             if self.install == False:
                 print(f'{self.red_text("[-]")} Please install trivy: https://github.com/aquasecurity/trivy')
             else:
                 if self.inst_trivy:
-                    self.install_tool("trivy")
+                    if not os.path.isfile('/home/linuxbrew/.linuxbrew/bin/trivy'):
+                        self.install_tool("trivy")
 
         if self.install == False:
             print(f'{self.red_text("[-]")} Since no consent was given, this program is about to exit. Please install manually all components above.')
@@ -190,8 +210,9 @@ class Kubenumerate():
                 break
         
         if not shutil.which("brew"):
-            if self.install:
-                self.install_tool("brew")
+            if not os.path.isfile('/home/linuxbrew/.linuxbrew/bin/brew'):
+                if self.install:
+                    self.install_tool("brew")
 
     def install_tool(self, tool):
         """Install the passed tool using brew, or install brew using bash"""
@@ -204,28 +225,21 @@ class Kubenumerate():
                 subprocess.run(f'/bin/bash -c "$(curl -fsSLk https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"', shell=True)
                 # Add homebrew to user's PATH
                 if "zsh" in shell:
-                    cmd = f"(echo; echo \'eval \"$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)\"\') >> /home/{os.environ['USER']}/.zshrc; eval \"$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)\""
+                    cmd = f"(echo; echo \'eval \"$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)\"\') >> /home/{os.environ['USER']}/.zshrc"
                 elif "bash" in shell:
-                    cmd = f"(echo; echo 'eval \"$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)\"') >> /home/{os.environ['USER']}/.bashrc; eval \"$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)\""
-                subprocess.run(cmd, shell=True, executable=shell)
-
-                # Add homebrew to user's PATH
-                if "zsh" in shell:
-                    cmd = f"\PATH=\"$PATH:/home/linuxbrew/.linuxbrew/bin\"; source /home/{os.environ['USER']}/.zshrc"
-                elif "bash" in shell:
-                    cmd = f"\PATH=\"$PATH:/home/linuxbrew/.linuxbrew/bin\"; source /home/{os.environ['USER']}/.bashrc"
+                    cmd = f"(echo; echo 'eval \"$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)\"') >> /home/{os.environ['USER']}/.bashrc"
                 subprocess.run(cmd, shell=True, executable=shell)
 
             except Exception as e:
                 print(f'{self.red_text("[-]")} Error whilst installing brew: {e}')
                 sys.exit(1)
         elif tool == "kube-bench":
-            subprocess.run("mkdir /tmp/kube-bench; curl -Lok /tmp/kube-bench/kube-bench_0.7.2_linux_amd64.tar.gz https://github.com/aquasecurity/kube-bench/releases/download/v0.7.2/kube-bench_0.7.2_linux_amd64.tar.gz", shell=True, executable=shell)
+            subprocess.run("mkdir /tmp/kube-bench; curl -kLo /tmp/kube-bench/kube-bench_0.7.2_linux_amd64.tar.gz https://github.com/aquasecurity/kube-bench/releases/download/v0.7.2/kube-bench_0.7.2_linux_amd64.tar.gz", shell=True, executable=shell)
             subprocess.run("cd /tmp/kube-bench; tar -xvf /tmp/kube-bench/kube-bench_0.7.2_linux_amd64.tar.gz", shell=True, executable=shell)
-            subprocess.run("chmod +x /tmp/kube-bench/kube-bench; ln -s /tmp/kube-bench/kube-bench /home/linuxbrew/.linuxbrew/bin/kube-bench", shell=True, executable=shell)
+            subprocess.run("chmod +x /tmp/kube-bench/kube-bench; ln -s /tmp/kube-bench/kube-bench /usr/local/bin/kube-bench", shell=True, executable=shell)
         else:
             try:
-                subprocess.run(f"brew install {tool}", shell=True, executable=shell)
+                subprocess.run(f"/home/linuxbrew/.linuxbrew/bin/brew install {tool}", shell=True, executable=shell)
             except Exception as e:
                 print(f'{self.red_text("[-]")} Error whilst installing {tool}: {e}')
                 sys.exit(1)
@@ -388,7 +402,8 @@ class Kubenumerate():
 
         if self.verbosity > 0:
             print(f'{self.cyan_text("[*]")} Gathering output from every resource {self.cyan_text(f"kubectl")} has permission to get. Please wait...')
-        command = "kubectl api-resources --no-headers | awk '// {print $1}' | sort -u"
+        awk_command = "awk '// {print $1}'"
+        command = f'{self.kubectl_bin} api-resources --no-headers | {awk_command} | sort -u'
         resources = subprocess.check_output(command, shell=True).decode().split("\n")[:-1]
         total_resources = len(resources)
 
@@ -406,7 +421,7 @@ class Kubenumerate():
                     Path.touch(f'{self.kubectl_path}{resource}.json', 0o644)
                     Path.touch(f'{self.kubectl_path}{resource}.yaml', 0o644)
                     
-                    command = f"kubectl get {resource} {self.namespace} -o json".split(" ")
+                    command = f"{self.kubectl_bin} get {resource} {self.namespace} -o json".split(" ")
                     process = subprocess.Popen(
                         command,
                         stdout=subprocess.PIPE,
@@ -478,6 +493,12 @@ class Kubenumerate():
 
     def Run(self):
         """Class main method. Launch kubeaudit, kube-bench and trivy and parse them"""
+
+        # Abort immediately if python 3.11 is not being used
+        python_version = subprocess.run("python3 --version".split(" "), check=True, capture_output=True, text=True).stdout.split(" ")[1].strip().split(".")
+        if float(f'{python_version[0]}.{python_version[1]}') < 3.11:
+            print(f'{self.red_text("[-]")} Python version < 3.11 detected. This is known to cause issues. Please update python and try again.')
+            sys.exit(1)
 
         # Print banner
         if self.verbosity > 0:
@@ -570,7 +591,7 @@ class Kubenumerate():
             print(f'{self.cyan_text("[*]")} Running kubeaudit, please wait...')
 
         # TODO: Add check for stderr
-        command = "kubeaudit all -p json"
+        command = f"{self.kubeaudit_bin} all -p json"
         process = subprocess.Popen(
             command.split(" "),
             stdout=subprocess.PIPE,
@@ -595,21 +616,27 @@ class Kubenumerate():
         if self.verbosity > 0:
             print(f'{self.cyan_text("[*]")} Running kube-bench, please wait...')
 
-        # TODO: Add check for stderr
-        command = "kube-bench run --targets=node,policies --json".split(" ")
-        process = subprocess.Popen(
-            command,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE)
-        stdout, stderr = process.communicate()
-        if stderr is not None:
-            # Raise error
-            if self.verbosity > 1:
-                print(f'{self.red_text("[-]")} Error running kube-bench: {stderr}')
+        if self.kube_bench_bin == "/tmp/kube-bench/kube-bench":
+            kube_bench_config_flag = "--config-dir /tmp/kube-bench/cfg/"
+
+        command = f"{self.kube_bench_bin} {kube_bench_config_flag} run --targets=node,policies --json".split(" ")
+
+        try:
+            process = subprocess.run(command, check=True, capture_output=True, text=True)
+            print("Process exited with code 0 (success)")
+        except subprocess.CalledProcessError as e:
+            print(f'{self.red_text("[-]")} Process exited with code {e.returncode}: {e}. Retrying with sudo...')
+            command.insert(0, "sudo")
+            try:
+                process = subprocess.run(command, check=True, capture_output=True, text=True)
+                print("Process exited with code 0 (success)")
+            except subprocess.CalledProcessError as e:
+                print(f'{self.red_text("[-]")} Process exited with code {e.returncode}: {e}. Retrying with sudo...')
+                sys.exit(1)
 
         # Save the output to a file
         with open(self.kube_bench_file, "w") as output_kube_bench_file:
-            output_kube_bench_file.write(stdout.decode("utf-8"))
+            output_kube_bench_file.write(process.stdout)
 
         if self.verbosity > 0:
             print(f'{self.green_text("[+]")} Done. Kube-bench output saved to {self.cyan_text(self.kube_bench_file)}')
@@ -1124,7 +1151,7 @@ class Kubenumerate():
     def run_trivy(self, image_name):
         """ Run Trivy against the specified image """
 
-        command = f"trivy i -q --scanners vuln --severity HIGH,CRITICAL --format json {image_name}"
+        command = f"{self.trivy_bin} i -q --scanners vuln --severity HIGH,CRITICAL --format json {image_name}"
 
         # Start the process
         try:
