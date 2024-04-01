@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-
+~
 import argparse
 import datetime
 import json
@@ -434,13 +434,17 @@ class Kubenumerate():
 
                 # Save the output to its own file
                 with open(f'{self.kubectl_path}{resource}.json', "w") as f:
-                    f.write(stdout.decode("utf-8"))
+                    # Check to avoid creating empty list file
+                    contents = json.loads(stdout.decode("utf-8"))
+                    if not contents["items"]:
+                        continue
+                    f.write(contents)
 
-                # And append to the catch-all file for global queries
+                # ... And if still alive, append to the catch-all file for global queries
                 with open(kubectl_json_file, '+a') as f:
-                    f.write(stdout.decode("utf-8"))
+                    f.write(contents)
 
-                # Repeat with yaml
+                # ... And repeat with yaml
                 command = f"kubectl get {resource} {self.namespace} -o yaml"
                 process = subprocess.Popen(
                     command.split(" "),
