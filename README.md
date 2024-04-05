@@ -20,7 +20,7 @@ Enter kubenumerate!
     |     < |  |  ||  _  |  -__|     |  |  |        |  -__|   _|  _  ||   _|  -__|
     |__|\__||_____||_____|_____|__|__|_____|__|__|__|_____|__| |___._||____|_____|
             
-    v1.0.5                                                            By 0x5ubt13
+    v1.0.6                                                            By 0x5ubt13
 
     usage: kubenumerate.py [-h] [--dry-run] [--excel-out EXCEL_OUT] [--kubeaudit-file KUBEAUDIT_FILE] [--kubeconfig KUBECONFIG] [--namespace NAMESPACE] [--output OUTPUT] [--trivy-file TRIVY_FILE] [--verbosity VERBOSITY]
 

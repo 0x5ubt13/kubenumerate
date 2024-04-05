@@ -21,7 +21,7 @@ class Kubenumerate():
 
     def __init__(self, args="", automount=False, cis=False, date=datetime.datetime.now().strftime("%b%y"), depr_api=False, dry_run=False, excel_file="kubenumerate_results_v1_0.xlsx", hardened=True, inst_kubeaudit=False, inst_kubebench=False, 
                  inst_kubectl=False, inst_trivy=False, install=False, kubeaudit_bin="kubeaudit", kubeaudit_file="", kube_bench_bin="kube-bench", kube_bench_file="", kubeconfig_path=f"/home/{os.environ['USER']}/.kube/config", kubectl_pods_file="", kubectl_bin="kubectl", kubectl_path="/tmp/kubenumerate_out/kubectl_output/", limits=True, namespace="-A", 
-                 out_path="/tmp/kubenumerate_out/", pkl_recovery="", pods="", privesc=False, privileged=False, rbac_police=False, requisites=[], trivy_bin="trivy", trivy_file="", verbosity=1, version="1.0.5", vuln_image=False):
+                 out_path="/tmp/kubenumerate_out/", pkl_recovery="", pods="", privesc=False, privileged=False, rbac_police=False, requisites=[], trivy_bin="trivy", trivy_file="", verbosity=1, version="1.0.6", vuln_image=False):
         """Initialize attributes"""
 
         self.args              = args
@@ -489,7 +489,6 @@ class Kubenumerate():
     def clean_up(self):
         """Clean up empty files, if generated"""
 
-        #TODO: Make all empty files created with kubectl also disappear with this function
         if self.dry_run:
             os.remove(self.kube_bench_file)
             if self.args.verbosity > 1: 
@@ -542,7 +541,6 @@ class Kubenumerate():
                     self.caps(kubeaudit_df, writer)
                     self.dep_api(kubeaudit_df, writer)
                     self.hostns(kubeaudit_df, writer)
-                    self.image(kubeaudit_df, writer)  # TODO
                     self.limits(kubeaudit_df, writer)
                     self.mounts(kubeaudit_df, writer)
                     self.netpols(kubeaudit_df, writer)
@@ -594,7 +592,6 @@ class Kubenumerate():
         if self.verbosity > 0:
             print(f'{self.cyan_text("[*]")} Running kubeaudit, please wait...')
 
-        # TODO: Add check for stderr
         command = f"{self.kubeaudit_bin} all -p json"
         process = subprocess.Popen(
             command.split(" "),
@@ -716,7 +713,6 @@ class Kubenumerate():
 
             self.hardened = False
         except: KeyError
-          
 
         try:
             # Apparmor annotation missing
@@ -871,10 +867,6 @@ class Kubenumerate():
                 freeze_panes=(1,0))
             self.hardened = False
         except: KeyError
-
-    def image(self, df, writer):
-        # TODO
-        return
 
     def limits(self, df, writer):
         """Limits"""
@@ -1349,9 +1341,12 @@ class Kubenumerate():
         """ Suggest what issues might be present """
         
         if not self.hardened or self.automount or self.vuln_image or self.privileged_flag or self.cis_detected or self.limits_set:
-            print(f'{self.green_text("[+]")} Suggested findings detected:')
+            print(f'{self.yellow_text("[!]")} Suggested findings detected:')
         else:
             print(f'{self.green_text("[+]")} No findings detected in the cluster.')
+
+        # TODO: implement version check to suggest the cluster is outdated
+        # include here the check for self.depr_api
         
         # Containers Not Hardened
         if not self.hardened:
@@ -1372,9 +1367,6 @@ class Kubenumerate():
         # CIS Benchmarks
         if self.cis_detected:
             print(f'\t{self.red_text("[!]")} CIS Benchmarks')
-
-        # #TODO:to determine
-        # if self.depr_api:
 
         # CPU usage
         if not self.limits_set:
