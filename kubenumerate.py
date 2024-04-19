@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-~
+
 import argparse
 import datetime
 import json
@@ -21,7 +21,7 @@ class Kubenumerate():
 
     def __init__(self, args="", automount=False, cis=False, date=datetime.datetime.now().strftime("%b%y"), depr_api=False, dry_run=False, excel_file="kubenumerate_results_v1_0.xlsx", hardened=True, inst_kubeaudit=False, inst_kubebench=False, 
                  inst_kubectl=False, inst_trivy=False, install=False, kubeaudit_bin="kubeaudit", kubeaudit_file="", kube_bench_bin="kube-bench", kube_bench_file="", kubeconfig_path=f"/home/{os.environ['USER']}/.kube/config", kubectl_pods_file="", kubectl_bin="kubectl", kubectl_path="/tmp/kubenumerate_out/kubectl_output/", limits=True, namespace="-A", 
-                 out_path="/tmp/kubenumerate_out/", pkl_recovery="", pods="", privesc=False, privileged=False, rbac_police=False, requisites=[], trivy_bin="trivy", trivy_file="", verbosity=1, version="1.0.6", vuln_image=False):
+                 out_path="/tmp/kubenumerate_out/", pkl_recovery="", pods="", privesc=False, privileged=False, rbac_police=False, requisites=[], trivy_bin="trivy", trivy_file="", verbosity=1, version="1.0.7", vuln_image=False):
         """Initialize attributes"""
 
         self.args              = args
@@ -65,6 +65,11 @@ class Kubenumerate():
 
         parser = argparse.ArgumentParser(
             description='Uses local kubeconfig file to launch kubeaudit, kube-bench, kubectl and trivy and parses all useful output to excel.')
+        parser.add_argument(
+            '--cheatsheet',
+            '-c',
+            action='store_true',
+            help="Print commands to extract info from the cluster and work offline")
         parser.add_argument(
             '--dry-run',
             '-d',
@@ -117,7 +122,7 @@ class Kubenumerate():
             if os.path.isfile('/tmp/kube-bench/kube-bench'):
                 self.kube_bench_bin="/tmp/kube-bench/kube-bench"
             else:
-                self.requisites.append("kubeaudit")
+                self.requisites.append("kube-bench'")
         if not shutil.which("kubectl"):
             if os.path.isfile('/home/linuxbrew/.linuxbrew/bin/kubectl'):
                 self.kubectl_bin="/home/linuxbrew/.linuxbrew/bin/kubectl"
@@ -293,23 +298,27 @@ class Kubenumerate():
                     print(f'{self.green_text("[+]")} Folder "{self.cyan_text(self.kubectl_path)}" created successfully.')
             except OSError:
                 if self.verbosity > 0:
-                    print(f'{self.green_text("[+]")} Using existing "{self.cyan_text(self.kubectl_path)}" folder for all kubectl output.')
+                    print(f'Using existing "{self.cyan_text(self.kubectl_path)}" folder for all kubectl output.')
 
-        # Check which kubeconfig file will be used and print current context
-        if self.args.kubeconfig is not None:
-            self.kubeconfig_path = self.args.kubeconfig
+        if self.dry_run:
+            if self.verbosity > 0:
+                print(f'{self.cyan_text("[*]")} --dry-run flag detected. Not fetching kubeconfig file.')
+        else:
+            # Check which kubeconfig file will be used and print current context
+            if self.args.kubeconfig is not None:
+                self.kubeconfig_path = self.args.kubeconfig
 
-        try:
-            with open(self.kubeconfig_path, 'r') as kubeconfig_file:
-                kubeconfig = yaml.safe_load(kubeconfig_file)
+            try:
+                with open(self.kubeconfig_path, 'r') as kubeconfig_file:
+                    kubeconfig = yaml.safe_load(kubeconfig_file)
 
-            current_context = kubeconfig.get('current-context')
+                current_context = kubeconfig.get('current-context')
+                
+                print(f'{self.green_text("[+]")} Kubeconfig successfully loaded from {self.yellow_text(f"{self.kubeconfig_path}")}')
+                print(f'{self.green_text("[+]")} Current context to be scanned: {self.yellow_text(f"{current_context}")}')
             
-            print(f'{self.green_text("[+]")} Kubeconfig successfully loaded from {self.yellow_text(f"{self.kubeconfig_path}")}')
-            print(f'{self.green_text("[+]")} Current context to be scanned: {self.yellow_text(f"{current_context}")}')
-        
-        except Exception as e:
-            print(f'{self.red_text("[-]")} Error loading kubeconfig file: {e}')
+            except Exception as e:
+                print(f'{self.red_text("[-]")} Error loading kubeconfig file: {e}')
 
         # Construct excel filename
         self.parse_excel_filename()
@@ -503,12 +512,20 @@ class Kubenumerate():
             print(f'{self.red_text("[-]")} Python version < 3.11 detected. This is known to cause issues. Please update python and try again.')
             sys.exit(1)
 
+        # Parse args
+        self.parse_args()
+
         # Print banner
         if self.verbosity > 0:
             self.print_banner()
 
-        # Parse args
-        self.parse_args()
+        if self.args.cheatsheet:
+            print(f'{self.cyan_text("[*]")} ----- Cheatsheet flag detected -----')
+            print('\nIf your testing host doesn\'t allow having installed other software than kubeaudit, you can extract all you need for Kubenumerate to work with the following one-liner:')
+            print(f'{self.cyan_text("kubectl")} get po {self.green_text("-A -o")} json {self.cyan_text(">")} {self.yellow_text("pods.json")}; {self.cyan_text("kubeaudit")} all -p json {self.cyan_text(">")} {self.yellow_text("kubeaudit_out.json")}; {self.cyan_text("echo")} "Done")\n')
+            print(f'Then from your host:\n{self.cyan_text("scp")} {self.green_text("-i")} {self.yellow_text("<rsa_id> <remoteuser>")}@{self.yellow_text("<10.10.10.10>")}:{self.yellow_text("<folder>")}*.json .\n')
+            print(f'And finally use kubenumerate with the data you just extracted:\n{self.cyan_text("kubenumerate")} {self.green_text("--dry-run --trivy-file")} {self.yellow_text("pods.json")} {self.green_text("--kubeaudit-file")} {self.yellow_text("kubeaudit_out.json")}')
+            sys.exit(0)
 
         if self.verbosity > 0:
             print(f'{self.cyan_text("[*]")} ----- Running initial checks -----')

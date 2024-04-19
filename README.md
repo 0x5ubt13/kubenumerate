@@ -5,7 +5,7 @@ Enumerate your Kubernetes cluster with just 1 command :eyes:
 ## Motivation
 
 - Concerned about your Kubernetes cluster's security?  
-- You're going to use kubeaudit, kube-bench and trivy anyway?
+- Are you going to use tools like kubeaudit, kube-bench and trivy anyway?
 - Do you want all done for you with one lazy command and exported to excel?
 
 Enter kubenumerate!
@@ -20,7 +20,7 @@ Enter kubenumerate!
     |     < |  |  ||  _  |  -__|     |  |  |        |  -__|   _|  _  ||   _|  -__|
     |__|\__||_____||_____|_____|__|__|_____|__|__|__|_____|__| |___._||____|_____|
             
-    v1.0.6                                                            By 0x5ubt13
+    v1.0.7                                                            By 0x5ubt13
 
     usage: kubenumerate.py [-h] [--dry-run] [--excel-out EXCEL_OUT] [--kubeaudit-file KUBEAUDIT_FILE] [--kubeconfig KUBECONFIG] [--namespace NAMESPACE] [--output OUTPUT] [--trivy-file TRIVY_FILE] [--verbosity VERBOSITY]
 
