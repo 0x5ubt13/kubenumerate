@@ -4,6 +4,7 @@ import argparse
 import datetime
 import json
 import os
+from packaging.version import Version
 import pandas as pd
 from pathlib import Path
 import pickle
@@ -19,14 +20,19 @@ class Kubenumerate():
         PRs: https://github.com/0x5ubt13/kubenumerate
     """
 
-    def __init__(self, args="", automount=False, cis=False, date=datetime.datetime.now().strftime("%b%y"), depr_api=False, dry_run=False, excel_file="kubenumerate_results_v1_0.xlsx", hardened=True, inst_kubeaudit=False, inst_kubebench=False, 
-                 inst_kubectl=False, inst_trivy=False, install=False, kubeaudit_bin="kubeaudit", kubeaudit_file="", kube_bench_bin="kube-bench", kube_bench_file="", kubeconfig_path=f"/home/{os.environ['USER']}/.kube/config", kubectl_pods_file="", kubectl_bin="kubectl", kubectl_path="/tmp/kubenumerate_out/kubectl_output/", limits=True, namespace="-A", 
-                 out_path="/tmp/kubenumerate_out/", pkl_recovery="", pods="", privesc=False, privileged=False, rbac_police=False, requisites=[], trivy_bin="trivy", trivy_file="", verbosity=1, version="1.0.7", vuln_image=False):
+    def __init__(self, args="", automount=False, cis=False, cluster_version="", date=datetime.datetime.now().strftime("%b%y"), depr_api=False, dry_run=False, 
+                 excel_file="kubenumerate_results_v1_0.xlsx", hardened=True, inst_kubeaudit=False, inst_kubebench=False, 
+                 inst_kubectl=False, inst_trivy=False, install=False, kubeaudit_bin="kubeaudit", kubeaudit_file="", kube_bench_bin="kube-bench", kube_bench_file="", 
+                 kubeconfig_path=f"/home/{os.environ['USER']}/.kube/config", kubectl_pods_file="", kubectl_bin="kubectl", 
+                 kubectl_path="/tmp/kubenumerate_out/kubectl_output/", kube_version="v1.30.0", limits=True, namespace="-A", 
+                 out_path="/tmp/kubenumerate_out/", pkl_recovery="", pods="", privesc=False, privileged=False, rbac_police=False, requisites=[], 
+                 trivy_bin="trivy", trivy_file="", verbosity=1, version="1.0.8", vuln_image=False):
         """Initialize attributes"""
 
         self.args              = args
         self.automount         = automount
         self.cis_detected      = cis
+        self.cluster_version   = cluster_version
         self.date              = date
         self.depr_api          = depr_api
         self.dry_run           = dry_run
@@ -41,10 +47,11 @@ class Kubenumerate():
         self.kubeaudit_file    = kubeaudit_file
         self.kube_bench_bin    = kube_bench_bin
         self.kube_bench_file   = kube_bench_file
-        self.kubeconfig_path   = kubeconfig_path
+        self.kubeconfig_path   = kubeconfig_path 
         self.kubectl_bin       = kubectl_bin
         self.kubectl_path      = kubectl_path
         self.kubectl_pods_file = kubectl_pods_file
+        self.kube_version      = kube_version # TODO: Implement automatic check to fetch kube io releases page and get latest?
         self.limits_set        = limits
         self.namespace         = namespace
         self.out_path          = out_path
@@ -239,8 +246,8 @@ class Kubenumerate():
                 print(f'{self.red_text("[-]")} Error whilst installing brew: {e}')
                 sys.exit(1)
         elif tool == "kube-bench":
-            subprocess.run("mkdir /tmp/kube-bench; curl -kLo /tmp/kube-bench/kube-bench_0.7.2_linux_amd64.tar.gz https://github.com/aquasecurity/kube-bench/releases/download/v0.7.2/kube-bench_0.7.2_linux_amd64.tar.gz", shell=True, executable=shell)
-            subprocess.run("cd /tmp/kube-bench; tar -xvf /tmp/kube-bench/kube-bench_0.7.2_linux_amd64.tar.gz", shell=True, executable=shell)
+            subprocess.run("mkdir /tmp/kube-bench; curl -kLo /tmp/kube-bench/kube-bench_0.7.3_linux_amd64.tar.gz https://github.com/aquasecurity/kube-bench/releases/download/v0.7.2/kube-bench_0.7.2_linux_amd64.tar.gz", shell=True, executable=shell)
+            subprocess.run("cd /tmp/kube-bench; tar -xvf /tmp/kube-bench/kube-bench_0.7.3_linux_amd64.tar.gz", shell=True, executable=shell)
             subprocess.run("chmod +x /tmp/kube-bench/kube-bench; ln -s /tmp/kube-bench/kube-bench /usr/local/bin/kube-bench", shell=True, executable=shell)
         else:
             try:
@@ -402,6 +409,25 @@ class Kubenumerate():
     def kubectl_get_all_yaml_and_json(self):
         """Gather all output from kubectl in both json and yaml"""
 
+        # Get cluster version first
+        kubectl_cluster_version_file = f'{self.kubectl_path}cluster_version.txt'
+        kubectl_cluster_version_command = f'{self.kubectl_bin} version | grep "Server" | cut -d"v" -f3'.split(" ")
+        try:
+            cluster_version_process = subprocess.Popen(
+                kubectl_cluster_version_command,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE)
+            cluster_version_stdout, cluster_version_stderr = cluster_version_process.communicate()
+
+            self.cluster_version = cluster_version_stdout
+            with open(f'{kubectl_cluster_version_file}.txt', "w") as f:
+                f.write(self.cluster_version)
+
+        except Exception as e:
+            self.cluster_version = ""
+            print(f'{self.red_text("[-]")} Error detected while launching `kubectl version: {e}')
+        
+        # Get all yaml and json about valid resources
         kubectl_json_file = f'{self.kubectl_path}all_output.json'
         kubectl_yaml_file = f'{self.kubectl_path}all_output.yaml'
 
@@ -1362,9 +1388,12 @@ class Kubenumerate():
         else:
             print(f'{self.green_text("[+]")} No findings detected in the cluster.')
 
-        # TODO: implement version check to suggest the cluster is outdated
-        # include here the check for self.depr_api
-        
+        # Version check to suggest the cluster's version is outdated
+        if Version(self.cluster_version) < Version(self.kube_version):
+            minor_version_difference = int(self.kube_version.split(".")[1]) - int(self.cluster_version.split(".")[1])
+            if minor_version_difference > 1:
+                print(f'\t{self.red_text("[!]")} Kubernetes Version Outdated')
+
         # Containers Not Hardened
         if not self.hardened:
             print(f'\t{self.red_text("[!]")} Containers Not Hardened')

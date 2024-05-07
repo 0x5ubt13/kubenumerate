@@ -10,6 +10,14 @@ Enumerate your Kubernetes cluster with just 1 command :eyes:
 
 Enter kubenumerate!
 
+With just 1 command it will locate or install (with permission) all the necessary tools, enumerate the whole current context, spit out a spreadsheet containing any juicy info and raise some found issues to the CLI. A handy containerised version is released in case you don't want to pollute the system with access to the target cluster's Kubernetes API with these tools, more info below in the containerised version section.
+
+Currently included tools:
+- Kubeaudit (installing latest from brew cask)
+- Kube-bench (manually installing 0.7.3 from [GitHub: aquasecurity / kube-bench / releases](https://github.com/aquasecurity/kube-bench/releases))
+- Kubectl (installing latest from brew cask)
+- Trivy (installing latest from brew cask)
+
 ## Usage
 
     ┌──(subtle㉿SubtleLabs)-[~]
@@ -20,7 +28,7 @@ Enter kubenumerate!
     |     < |  |  ||  _  |  -__|     |  |  |        |  -__|   _|  _  ||   _|  -__|
     |__|\__||_____||_____|_____|__|__|_____|__|__|__|_____|__| |___._||____|_____|
             
-    v1.0.7                                                            By 0x5ubt13
+    v1.0.8                                                            By 0x5ubt13
 
     usage: kubenumerate.py [-h] [--cheatsheet] [--dry-run] [--excel-out EXCEL_OUT] [--kubeaudit-file KUBEAUDIT_FILE]
                        [--kubeconfig KUBECONFIG] [--namespace NAMESPACE] [--output OUTPUT] [--trivy-file TRIVY_FILE]
@@ -77,7 +85,7 @@ You will need to mount your `kubeconfig` file inside the container, then mount t
     cp ~/.kube/config /tmp/config
     chmod a+r /tmp/config
     chmod a+w /tmp/kubenumerate_out
-
+    
     # Run the program
     docker run \
         --network host \
@@ -85,7 +93,7 @@ You will need to mount your `kubeconfig` file inside the container, then mount t
         -v /tmp/config:/home/subtle/.kube/config \
         --mount type=bind,source=/tmp/kubenumerate_out,target=/tmp/kubenumerate_out \
         gagarter/kubenumerate
-
+    
     # Clean up
     printf "Removing container -> "; docker rm kubenumerate
     rm /tmp/config
