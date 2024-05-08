@@ -3,3 +3,4 @@ pandas>=2.2.1
 pyarrow
 xlsxwriter
 pyyaml
+packaging~=24.0
