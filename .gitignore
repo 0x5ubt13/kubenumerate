@@ -3,4 +3,4 @@ kubectl_output/
 kubenumerate_out/
 kubenumerate_example_output/
 /venv/
-/.idea/
+.idea/

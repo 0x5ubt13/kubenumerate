@@ -124,7 +124,6 @@ class Kubenumerate:
     def check_requisites(self):
         """Check for kubeaudit, kube-bench and trivy. Exit if they are not present in the system"""
 
-        self.requisites = []
         if not shutil.which("kubeaudit"):
             if os.path.isfile('/home/linuxbrew/.linuxbrew/bin/kubeaudit'):
                 self.kubeaudit_bin = "/home/linuxbrew/.linuxbrew/bin/kubeaudit"
@@ -308,7 +307,7 @@ class Kubenumerate:
                 if self.verbosity > 0:
                     print(
                         f'{self.green_text("[+]")} Using passed argument "{self.cyan_text(self.trivy_file)}" file as '
-                        f'input file for Trivy to avoid sending unnecesary requests to the cluster.')
+                        f'input file for Trivy to avoid sending unnecessary requests to the cluster.')
                 with open(self.trivy_file, "r") as f:
                     self.pods = json.loads(f.read())
 
@@ -359,7 +358,7 @@ class Kubenumerate:
         self.parse_excel_filename()
 
     def parse_excel_filename(self):
-        """Construct the excel filename according to the switches passed to the script"""
+        """Construct the Excel filename according to the switches passed to the script"""
 
         # Default
         if self.args.excel_out is None:
@@ -377,7 +376,7 @@ class Kubenumerate:
             if self.verbosity > 0:
                 print(
                     f'{self.green_text("[+]")} Using existing "{self.cyan_text(self.kubeaudit_file)}" kubeaudit file '
-                    f'as input file to avoid sending unnecesary requests to the client\'s cluster.')
+                    f'as input file to avoid sending unnecessary requests to the client\'s cluster.')
                 print(
                     f'{self.yellow_text("[!]")} If you want a fresh kubeaudit output file, run the following command '
                     f'and run this program again:\n\t{self.yellow_text(f"rm {self.kubeaudit_file}")}')
@@ -395,7 +394,7 @@ class Kubenumerate:
             if self.verbosity > 0:
                 print(
                     f'{self.green_text("[+]")} Using existing "{self.cyan_text(self.kube_bench_file)}" kube-bench '
-                    f'file as input file to avoid sending unnecesary requests to the client\'s cluster.')
+                    f'file as input file to avoid sending unnecessary requests to the client\'s cluster.')
                 print(
                     f'{self.yellow_text("[!]")} If you want a fresh kube-bench output file, run the following command '
                     f'and run this program again:\n\t{self.yellow_text(f"rm {self.kube_bench_file}")}')
@@ -437,7 +436,7 @@ class Kubenumerate:
             if self.verbosity > 0:
                 print(
                     f'{self.green_text("[+]")} Using "{self.cyan_text(self.kubectl_pods_file)}" file as input file '
-                    f'for Trivy to avoid sending unnecesary requests to the cluster.')
+                    f'for Trivy to avoid sending unnecessary requests to the cluster.')
             with open(self.kubectl_pods_file, "r") as f:
                 self.pods = json.loads(f.read())
                 return
@@ -633,7 +632,7 @@ class Kubenumerate:
             print(
                 f'\n{self.cyan_text("[*]")} ----- Parsing kubeaudit, kube-bench and trivy output, please wait... -----')
 
-        # Write to excel file all findings
+        # Write to Excel file all findings
         with open(self.kubeaudit_file, "r") as kubeaudit_f:
             with open(self.kube_bench_file, "r") as kube_bench_f:
                 with pd.ExcelWriter(self.excel_file, engine='xlsxwriter', mode="w") as writer:
@@ -1228,6 +1227,7 @@ class Kubenumerate:
         except:
             KeyError
 
+    # TODO: make static method? -> @staticmethod
     def show_status_bar(self, iteration, resource, count, start, size=50):
         """Quick function to show a nice status bar to stderr"""
 
@@ -1254,7 +1254,8 @@ class Kubenumerate:
                 data = pickle.load(recovery_file)
                 scanned_images, vuln_images, vuln_containers, iteration = data
                 print(
-                    f'{self.cyan_text("[*]")} Restoring data from previous interrupted scan: jumping to pod #{iteration}')
+                    f'{self.cyan_text("[*]")} Restoring data from previous interrupted scan: '
+                    f'jumping to pod #{iteration}')
             return scanned_images, vuln_images, vuln_containers, iteration, True
 
         # Otherwise, return new lists
@@ -1269,8 +1270,8 @@ class Kubenumerate:
             with open(self.pkl_recovery, "rb") as recovery_file:
                 data = pickle.load(recovery_file)
                 images, iteration = data
-                print(
-                    f'{self.cyan_text("[*]")} Restoring data from previous interrupted scan: jumping to pod #{iteration}')
+                print(f'{self.cyan_text("[*]")} Restoring data from previous interrupted scan: '
+                      f'jumping to pod #{iteration}')
             return images, iteration, True
 
         # Otherwise, return new vars
@@ -1317,19 +1318,23 @@ class Kubenumerate:
         total_pods = len(pods)
         if total_pods == 0:
             print(
-                f'{self.red_text("[-]")} No pods detected, aborting...\n{self.red_text("[-]")} Please check the permissions of your current role with the following command:\n\t{self.yellow_text("kubectl auth can-i --list")}')
+                f'{self.red_text("[-]")} No pods detected, aborting...\n{self.red_text("[-]")} Please check the '
+                f'permissions of your current role with the following command:\n\t'
+                f'{self.yellow_text("kubectl auth can-i --list")}')
             return
 
         # Vars needed
         self.pkl_recovery = f"{self.out_path}.kubenumerate_trivy_log_lists.pkl"
 
-        # Create recovery file if doesn't exist
+        # Create recovery file if it doesn't exist
         if not os.path.exists(self.pkl_recovery):
             Path.touch(self.pkl_recovery, 0o644)
 
         if self.verbosity > 1:
             print(
-                f'{self.yellow_text("[!]")} Launching trivy to scan every unique container image for vulns. This might take a while, please wait...\n{self.yellow_text("[!]")} Known issues: if stuck at 0, run: \n\ttrivy i --download-java-db-only')
+                f'{self.yellow_text("[!]")} Launching trivy to scan every unique container image for vulns. This '
+                f'might take a while, please wait...\n{self.yellow_text("[!]")} Known issues: if stuck at 0, '
+                f'run: \n\ttrivy i --download-java-db-only')
             print(f'{self.cyan_text("[*]")} Scanning {self.yellow_text(f"{total_pods}")} pods detected...')
 
         # Recover from aborted scan, if needed
@@ -1345,7 +1350,9 @@ class Kubenumerate:
             if iteration == total_pods - 1:
                 if self.verbosity > 0:
                     print(
-                        f'{self.red_text("[-]")} It looks like this test was already run in the past.\nIf you want to redo the assessment, select a different output folder, or run\n\t{self.yellow_text(f"rm {self.pkl_recovery}")}')
+                        f'{self.red_text("[-]")} It looks like this test was already run in the past.\nIf you want to '
+                        f'redo the assessment, select a different output folder, or run\n\t'
+                        f'{self.yellow_text(f"rm {self.pkl_recovery}")}')
                 break
 
             # Skip to the recovered point
@@ -1443,7 +1450,8 @@ class Kubenumerate:
             except KeyboardInterrupt:
                 if self.verbosity > 0:
                     print(
-                        f'\n{self.cyan_text("[*]")} Ctrl+c detected. Recovery file saved to {self.cyan_text(self.pkl_recovery)}...')
+                        f'\n{self.cyan_text("[*]")} Ctrl+c detected. Recovery file saved to '
+                        f'{self.cyan_text(self.pkl_recovery)}...')
                 sys.exit(99)
             except json.decoder.JSONDecodeError or ValueError as e:
                 if self.verbosity > 1:
@@ -1479,11 +1487,13 @@ class Kubenumerate:
     def raise_issues(self):
         """ Suggest what issues might be present """
 
-        if not self.hardened or self.automount or self.vuln_image or self.privileged_flag or self.cis_detected or self.limits_set:
+        if (not self.hardened or self.automount or self.vuln_image or
+                self.privileged_flag or self.cis_detected or self.limits_set):
             print(f'{self.yellow_text("[!]")} Suggested findings detected:')
         else:
             print(f'{self.green_text("[+]")} No findings detected in the cluster.')
 
+        # TODO: move this check somewhere else in the script and only use a bool like in the others for continuity?
         # Version check to suggest the cluster's version is outdated
         if Version(self.cluster_version) < Version(self.kube_version):
             minor_version_difference = int(self.kube_version.split(".")[1]) - int(self.cluster_version.split(".")[1])
@@ -1517,17 +1527,19 @@ class Kubenumerate:
         # Suggest using RBAC Police
         if self.rbac_police:
             print(
-                f'{self.yellow_text("[!]")} Running RBAC Police next might be interesting...\n\t(https://github.com/PaloAltoNetworks/rbac-police)')
+                f'{self.yellow_text("[!]")} Running RBAC Police next might be interesting...\n\t('
+                f'https://github.com/PaloAltoNetworks/rbac-police)')
 
     def print_banner(self):
-        banner = """
-__  __         __                                                 __         
-|  |/  |.--.--.|  |--.-----.-----.--.--.--------.-----.----.---.-.|  |_.-----.
-|     < |  |  ||  _  |  -__|     |  |  |        |  -__|   _|  _  ||   _|  -__|
-|__|\__||_____||_____|_____|__|__|_____|__|__|__|_____|__| |___._||____|_____|
-        """
+        banner = ("\n"
+                  "__  __         __                                                 __         \n"
+                  "|  |/  |.--.--.|  |--.-----.-----.--.--.--------.-----.----.---.-.|  |_.-----.\n"
+                  "|     < |  |  ||  _  |  -__|     |  |  |        |  -__|   _|  _  ||   _|  -__|\n"
+                  "|__|\__||_____||_____|_____|__|__|_____|__|__|__|_____|__| |___._||____|_____|\n"
+                  "        ")
         print(
-            f'{self.cyan_text(banner)}\n{self.yellow_text(f"v{self.version}")}                                                            {self.green_text("By 0x5ubt13")}\n')
+            f'{self.cyan_text(banner)}\n{self.yellow_text(f"v{self.version}")}                                         '
+            f'                    {self.green_text("By 0x5ubt13")}\n')
 
 
 def main():
