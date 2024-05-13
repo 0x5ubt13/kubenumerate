@@ -28,7 +28,7 @@ class Kubenumerate:
                  kubectl_bin="kubectl", kubectl_path="/tmp/kubenumerate_out/kubectl_output/", kube_version="v1.30.0",
                  limits=True, namespace="-A", out_path="/tmp/kubenumerate_out/", pkl_recovery="", pods="",
                  privesc=False, privileged=False, rbac_police=False, requisites=None, trivy_bin="trivy", trivy_file="",
-                 verbosity=1, version="1.0.8", vuln_image=False):
+                 verbosity=1, version="1.0.8", version_diff=0, vuln_image=False):
         """Initialize attributes"""
 
         if requisites is None:
@@ -69,6 +69,7 @@ class Kubenumerate:
         self.pkl_recovery = pkl_recovery
         self.verbosity = verbosity
         self.version = version
+        self.version_diff = version_diff
         self.vuln_image = vuln_image
 
     def parse_args(self):
@@ -412,37 +413,43 @@ class Kubenumerate:
         # Populate self.pods for trivy
         self.kubectl_get_all_pods()
 
+        # Version check to suggest the cluster's version is outdated
+        if Version(self.cluster_version) < Version(self.kube_version):
+            self.version_diff = int(self.kube_version.split(".")[1]) - int(self.cluster_version.split(".")[1])
+
         if self.verbosity > 0:
             print(f'{self.green_text("[+]")} Done. All kubectl output saved to {self.cyan_text(self.out_path)}')
 
     def kubectl_get_all_pods(self):
         """Check whether a previous kubectl json file already exists. If not, launch kubectl"""
 
-        # First check if args passed a pods json dump
-        if self.args.trivy_file is not None:
-            self.trivy_file = f"{os.getcwd()}/{self.args.trivy_file}"
-            if os.path.exists(self.trivy_file):
-                if self.verbosity > 0:
-                    print(
-                        f'{self.green_text("[+]")} Using passed argument "{self.cyan_text(self.trivy_file)}" file as '
-                        f'input file for Trivy to avoid sending unnecessary requests to the cluster.')
-                with open(self.trivy_file, "r") as f:
-                    self.pods = json.loads(f.read())
-                return
-
-        # Use a freshly extracted pods file
+        # Set friendly vars
+        self.trivy_file = f"{os.getcwd()}/{self.args.trivy_file}"
         self.kubectl_pods_file = f"{self.kubectl_path}pods.json"
+
+        # Exit if file not found
+        if self.args.trivy_file is None and not os.path.exists(self.kubectl_pods_file):
+            print(f'{self.red_text("[-]")} No pods file detected, are you sure kubectl has run fine?')
+            return
+        
+        # If an argument passed, use it
+        if os.path.exists(self.trivy_file):
+            if self.verbosity > 0:
+                    print(
+                        f'{self.green_text("[+]")} Using passed argument "{self.cyan_text(self.trivy_file)}" '
+                        f'file as input file for Trivy to avoid sending unnecessary requests to the cluster.')
+            with open(self.trivy_file, "r") as f:
+                self.pods = json.loads(f.read())
+            return
+
+        # Otherwise, use a freshly extracted pods file
         if os.path.exists(self.kubectl_pods_file):
             if self.verbosity > 0:
                 print(
-                    f'{self.green_text("[+]")} Using "{self.cyan_text(self.kubectl_pods_file)}" file as input file '
-                    f'for Trivy to avoid sending unnecessary requests to the cluster.')
+                    f'{self.green_text("[+]")} Using "{self.cyan_text(self.kubectl_pods_file)}" '
+                    f'file as input file for Trivy to avoid sending unnecessary requests to the cluster.')
             with open(self.kubectl_pods_file, "r") as f:
                 self.pods = json.loads(f.read())
-                return
-
-        # Notify if no file was found
-        print(f'{self.red_text("[-]")} No pods file detected, are you sure kubectl has run fine?')
 
     def kubectl_get_all_yaml_and_json(self):
         """Gather all output from kubectl in both json and yaml"""
@@ -1487,18 +1494,16 @@ class Kubenumerate:
     def raise_issues(self):
         """ Suggest what issues might be present """
 
-        if (not self.hardened or self.automount or self.vuln_image or
-                self.privileged_flag or self.cis_detected or self.limits_set):
-            print(f'{self.yellow_text("[!]")} Suggested findings detected:')
-        else:
+        if (self.hardened or not self.automount or not self.vuln_image or self.version_diff < 1 or
+                not self.privileged_flag or not self.cis_detected or not self.limits_set):
             print(f'{self.green_text("[+]")} No findings detected in the cluster.')
+            return
+        
+        print(f'{self.cyan_text("[*]")} Suggested findings detected:')
 
-        # TODO: move this check somewhere else in the script and only use a bool like in the others for continuity?
-        # Version check to suggest the cluster's version is outdated
-        if Version(self.cluster_version) < Version(self.kube_version):
-            minor_version_difference = int(self.kube_version.split(".")[1]) - int(self.cluster_version.split(".")[1])
-            if minor_version_difference > 1:
-                print(f'\t{self.red_text("[!]")} Kubernetes Version Outdated')
+        # Kubernetes Version Outdated
+        if self.version_diff > 1:
+            print(f'\t{self.red_text("[!]")} Kubernetes Version Outdated')
 
         # Containers Not Hardened
         if not self.hardened:
