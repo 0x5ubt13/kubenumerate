@@ -482,8 +482,9 @@ class Kubenumerate:
                     continue
                 try:
                     # TODO: linter: "Expected type 'Path', got 'str' instead" -> Solution: Path(str)?
-                    Path.touch(f'{self.kubectl_path}{resource}.json', 0o644)
-                    Path.touch(f'{self.kubectl_path}{resource}.yaml', 0o644)
+                    # TODO: Testing above solution
+                    Path.touch(Path(f'{self.kubectl_path}{resource}.json', 0o644))
+                    Path.touch(Path(f'{self.kubectl_path}{resource}.yaml', 0o644))
 
                     command = f"{self.kubectl_bin} get {resource} {self.namespace} -o json".split(" ")
                     process = subprocess.Popen(
