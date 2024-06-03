@@ -26,7 +26,7 @@ class Kubenumerate:
                  kubeaudit_bin="kubeaudit", kubeaudit_file="", kube_bench_bin="kube-bench", kube_bench_file="",
                  kubeconfig_path=f"/home/{os.environ['USER']}/.kube/config", kubectl_bin="kubectl",
                  kubectl_path="/tmp/kubenumerate_out/kubectl_output/", kube_version="v1.30.0", limits=True,
-                 namespace="-A", out_path="/tmp/kubenumerate_out/", pkl_recovery="", pods="", privesc=False,
+                 namespace="-A", out_path="/tmp/kubenumerate_out/", pkl_recovery="", pods="", pods_file="", privesc=False,
                  privileged=False, rbac_police=False, requisites=None, trivy_bin="trivy", trivy_file="", verbosity=1,
                  version="1.0.8", version_diff=0, vuln_image=False):
         """Initialize attributes"""
@@ -59,6 +59,7 @@ class Kubenumerate:
         self.namespace = namespace
         self.out_path = out_path
         self.pods = pods
+        self.pods_file = pods_file
         self.privesc_set = privesc
         self.privileged_flag = privileged
         self.rbac_police = rbac_police
@@ -310,6 +311,8 @@ class Kubenumerate:
                         f'input file for Trivy to avoid sending unnecessary requests to the cluster.')
                 with open(self.trivy_file, "r") as f:
                     self.pods = json.loads(f.read())
+        else:
+            self.pods_file = f'{self.kubectl_path}pods.json'
 
         # Check path exists and create it if not
         try:
@@ -346,7 +349,7 @@ class Kubenumerate:
 
                 current_context = kubeconfig.get('current-context')
                 print(
-                    f'{self.green_text("[+]")} Kubeconfig successfully loaded from'
+                    f'{self.green_text("[+]")} Kubeconfig successfully loaded from '
                     f'{self.yellow_text(f"{self.kubeconfig_path}")}')
                 print(
                     f'{self.green_text("[+]")} Current context to be scanned: {self.yellow_text(f"{current_context}")}')
@@ -414,27 +417,31 @@ class Kubenumerate:
         if self.verbosity > 0:
             print(f'{self.green_text("[+]")} Done. All kubectl output saved to {self.cyan_text(self.out_path)}')
 
-    def parse_all_pods(self, pods_file):
+    def parse_all_pods(self):
         """Check whether a previous kubectl json file already exists. If not, launch kubectl"""
 
+        # Abort if user passed file as arg
+        if self.args.trivy_file is not None:
+            return
+
         # Exit if file not found
-        if not os.path.exists(pods_file):
+        if not os.path.exists(self.pods_file):
             print(f'{self.red_text("[-]")} Error: No pods file detected. Are you sure kubectl has run fine?')
             return
 
-        if os.path.exists(pods_file):
+        if os.path.exists(self.pods_file):
             if self.verbosity > 0:
                 print(
-                    f'{self.green_text("[+]")} Using "{self.cyan_text(pods_file)}" file as input file for Trivy')
-            with open(pods_file, "r") as f:
+                    f'{self.green_text("[+]")} Using "{self.cyan_text(self.pods_file)}" file as input file for Trivy')
+            with open(self.pods_file, "r") as f:
                 self.pods = json.loads(f.read())
 
     def kubectl_get_all_yaml_and_json(self):
         """Gather all output from kubectl in both json and yaml"""
 
         # Get cluster version first
-        kubectl_cluster_version_file = f'{self.kubectl_path}cluster_version.txt'
-        kubectl_cluster_version_command = f'{self.kubectl_bin} version | grep "Server" | cut -d"v" -f3'.split(" ")
+        kubectl_cluster_version_file = f''
+        kubectl_cluster_version_command = [self.kubectl_bin, "version"]
         try:
             cluster_version_process = subprocess.Popen(
                 kubectl_cluster_version_command,
@@ -442,20 +449,19 @@ class Kubenumerate:
                 stderr=subprocess.PIPE)
             cluster_version_stdout, cluster_version_stderr = cluster_version_process.communicate()
 
-            self.cluster_version = cluster_version_stdout
-            with open(f'{kubectl_cluster_version_file}.txt', "w") as f:
+            self.cluster_version = cluster_version_stdout.decode("UTF-8").split(" ")[-1].replace("v", "")
+            with open(f'{self.kubectl_path}cluster_version.txt', "w") as f:
                 f.write(self.cluster_version)
 
         except Exception as e:
             self.cluster_version = ""
-            print(f'{self.red_text("[-]")} Error detected while launching `kubectl version: {e}')
+            print(f'{self.red_text("[-]")} Error detected while launching `kubectl version`: {e}')
 
         # Get all yaml and json about valid resources
         kubectl_json_file = f'{self.kubectl_path}all_output.json'
         kubectl_yaml_file = f'{self.kubectl_path}all_output.yaml'
 
         if not os.path.exists(kubectl_json_file):
-            # TODO: linter: "Expected type 'Path', got 'str' instead" -> Solution: Path(str)?
             Path.touch(kubectl_json_file, 0o644)
             Path.touch(kubectl_yaml_file, 0o644)
 
@@ -481,10 +487,8 @@ class Kubenumerate:
                             f'system. Skipping...')
                     continue
                 try:
-                    # TODO: linter: "Expected type 'Path', got 'str' instead" -> Solution: Path(str)?
-                    # TODO: Testing above solution
-                    Path.touch(Path(f'{self.kubectl_path}{resource}.json', 0o644))
-                    Path.touch(Path(f'{self.kubectl_path}{resource}.yaml', 0o644))
+                    Path.touch(f'{self.kubectl_path}{resource}.json', 0o644)
+                    Path.touch(f'{self.kubectl_path}{resource}.yaml', 0o644)
 
                     command = f"{self.kubectl_bin} get {resource} {self.namespace} -o json".split(" ")
                     process = subprocess.Popen(
@@ -505,11 +509,12 @@ class Kubenumerate:
                     contents = json.loads(stdout.decode("utf-8"))
                     if not contents["items"]:
                         continue
-                    f.write(contents)
+                    contents_str = json.dumps(contents, indent=4)
+                    f.write(contents_str)
 
                 # ... And if still alive, append to the catch-all file for global queries
                 with open(kubectl_json_file, '+a') as f:
-                    f.write(contents)
+                    f.write(contents_str)
 
                 # ... And repeat with yaml
                 command = f"kubectl get {resource} {self.namespace} -o yaml"
@@ -546,7 +551,6 @@ class Kubenumerate:
 
             with open(self.kube_bench_file, "w") as dummy_f:
                 json.dump(dummy_data, dummy_f)
-
             return
 
         self.launch_kubectl()
@@ -645,8 +649,10 @@ class Kubenumerate:
                         if self.verbosity > 0:
                             print(f'{self.green_text("[+]")} Kube-bench successfully parsed')
 
-                    # Run trivy methods
+                    # Parse all pods for Trivy
+                    self.parse_all_pods()
 
+                    # Run trivy methods
                     self.trivy_parser(writer)
                     if self.verbosity > 0:
                         print(f'{self.green_text("[+]")} Trivy successfully parsed')
@@ -1465,8 +1471,8 @@ class Kubenumerate:
     def raise_issues(self):
         """ Suggest what issues might be present """
 
-        if (self.hardened or not self.automount or not self.vuln_image or self.version_diff <= 1 or
-                not self.privileged_flag or not self.cis_detected or not self.limits_set):
+        if (self.hardened and not self.automount and not self.vuln_image and self.version_diff <= 1 and
+                not self.privileged_flag and not self.cis_detected and not self.limits_set):
             print(f'{self.green_text("[+]")} No findings detected in the cluster.')
             return
 
