@@ -28,7 +28,7 @@ class Kubenumerate:
                  kubectl_path="/tmp/kubenumerate_out/kubectl_output/", kube_version="v1.30.0", limits=True,
                  namespace="-A", out_path="/tmp/kubenumerate_out/", pkl_recovery="", pods="", pods_file="", privesc=False,
                  privileged=False, rbac_police=False, requisites=None, trivy_bin="trivy", trivy_file="", verbosity=1,
-                 version="1.0.8", version_diff=0, vuln_image=False):
+                 version="1.0.9", version_diff=0, vuln_image=False):
         """Initialize attributes"""
 
         if requisites is None:

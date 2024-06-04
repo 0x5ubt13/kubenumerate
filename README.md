@@ -28,7 +28,7 @@ Currently included tools:
     |     < |  |  ||  _  |  -__|     |  |  |        |  -__|   _|  _  ||   _|  -__|
     |__|\__||_____||_____|_____|__|__|_____|__|__|__|_____|__| |___._||____|_____|
             
-    v1.0.8                                                            By 0x5ubt13
+    v1.0.9                                                            By 0x5ubt13
 
     usage: kubenumerate.py [-h] [--cheatsheet] [--dry-run] [--excel-out EXCEL_OUT] [--kubeaudit-file KUBEAUDIT_FILE]
                        [--kubeconfig KUBECONFIG] [--namespace NAMESPACE] [--output OUTPUT] [--trivy-file TRIVY_FILE]
