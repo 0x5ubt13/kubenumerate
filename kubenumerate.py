@@ -24,15 +24,15 @@ class Kubenumerate:
                  depr_api=False, dry_run=False, excel_file="kubenumerate_results_v1_0.xlsx", hardened=True,
                  inst_kubeaudit=False, inst_kubebench=False, inst_kubectl=False, inst_trivy=False, install=False,
                  kubeaudit_bin="kubeaudit", kubeaudit_file="", kube_bench_bin="kube-bench", kube_bench_file="",
-                 kubeconfig_path=f"/home/{os.environ['USER']}/.kube/config", kubectl_bin="kubectl",
-                 kubectl_path="/tmp/kubenumerate_out/kubectl_output/", kube_version="v1.30.0", limits=True,
-                 namespace="-A", out_path="/tmp/kubenumerate_out/", pkl_recovery="", pods="", pods_file="", privesc=False,
-                 privileged=False, rbac_police=False, requisites=None, trivy_bin="trivy", trivy_file="", verbosity=1,
-                 version="1.0.9", version_diff=0, vuln_image=False):
+                 kubectl_bin="kubectl", kubectl_path="/tmp/kubenumerate_out/kubectl_output/", kube_version="v1.30.0",
+                 limits=True, namespace="-A", out_path="/tmp/kubenumerate_out/", pkl_recovery="", pods="", pods_file="",
+                 privesc=False, privileged=False, rbac_police=False, requisites=None, trivy_bin="trivy", trivy_file="",
+                 verbosity=1, version="1.0.10", version_diff=0, vuln_image=False):
         """Initialize attributes"""
 
         if requisites is None:
             requisites = []
+        user = os.environ.get('USER', 'subtle')
         self.args = args
         self.automount = automount
         self.cis_detected = cis
@@ -51,7 +51,7 @@ class Kubenumerate:
         self.kubeaudit_file = kubeaudit_file
         self.kube_bench_bin = kube_bench_bin
         self.kube_bench_file = kube_bench_file
-        self.kubeconfig_path = kubeconfig_path
+        self.kubeconfig_path = f"/home/{user}/.kube/config"
         self.kubectl_bin = kubectl_bin
         self.kubectl_path = kubectl_path
         self.kube_version = kube_version  # TODO: Implement automatic check to fetch latest kube io release?
