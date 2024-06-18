@@ -622,6 +622,11 @@ class Kubenumerate:
         with open(self.kubeaudit_file, "r") as kubeaudit_f:
             with open(self.kube_bench_file, "r") as kube_bench_f:
                 with pd.ExcelWriter(self.excel_file, engine='xlsxwriter', mode="w") as writer:
+                    # Setting the headers format
+                    headers_config = writer.book.add_format({
+
+                    })
+
                     # Make dataframe for Kubeaudit
                     kubeaudit_df = pd.read_json(kubeaudit_f, lines=True)
 
@@ -803,6 +808,15 @@ class Kubenumerate:
                                       == 'AppArmorDisabled']
             df_apparmor_disabled = df_apparmor_disabled[[
                 "ResourceNamespace", "ResourceKind", "ResourceName", "Container", "AnnotationValue", "msg"]]
+            df_apparmor_disabled.rename(columns={
+                "ResourceNamespace": "Resource Namespace",
+                "ResourceKind": "Resource Kind",
+                "ResourceName": "Resource Name",
+                "Container": "Affected Container",
+                "AnnotationValue": "Annotation Value",
+                "msg": "Recommendation",
+            })
+
             df_apparmor_disabled.to_excel(
                 writer,
                 sheet_name="Apparmor - Disabled",

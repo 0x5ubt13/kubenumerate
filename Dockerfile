@@ -22,6 +22,7 @@ RUN apt-get update \
 		fonts-dejavu-core \
 		g++ \
 		git \
+        jq \
 		locales \
 		make \
 		openssh-client \
@@ -30,8 +31,9 @@ RUN apt-get update \
 		uuid-runtime \
 		wget \
 	&& rm -rf /var/lib/apt/lists/* \
-	# Ugly hack to download kube-bench, yes, I know
-	&& curl -s https://api.github.com/repos/aquasecurity/kube-bench/releases/latest | grep amd64.deb | grep browser_download | awk '{ print $2 }' | xargs wget \
+    # Get latest version of kube-bench directly from GitHub
+	&& curl -s https://api.github.com/repos/aquasecurity/kube-bench/releases/latest | jq -r '.assets[] | select(.name | test("amd64.deb")) | .browser_download_url' | wget -i - \
+    # planned upgrade: including rbac-police: curl -s https://api.github.com/repos/PaloAltoNetworks/rbac-police/releases/latest | jq -r '.assets[] | select(.name | test("linux_amd64")) | .browser_download_url' | wget -i - \
     && sudo apt-get install -y ./kube-bench* \
 	# Kinda defeating the best practices above, we need sudo later on
 	&& localedef -i en_US -f UTF-8 en_US.UTF-8 \
