@@ -38,13 +38,28 @@ with pd.ExcelWriter("enhanced.xlsx", engine="xlsxwriter", mode="w") as writer:
     worksheet.merge_range('A1:AC1', title, title_format)
     worksheet.merge_range('A2:AC2', subtitle)
     worksheet.set_row(2, 15) # row height to 15
+    df = df.rename(columns={
+        "ResourceNamespace": "Resource Namespace",
+        "ResourceKind": "Resource Kind",
+        "ResourceName": "Resource Name",
+        "Container": "Affected Container",
+        "Metadata": "Metadata",
+        "msg": "Recommendation",
+    })
     for col_num, value in enumerate(df.columns.values):
         worksheet.write(2, col_num, value, header_format)
     worksheet.freeze_panes(3, 0)
+    bg_format1 = workbook.add_format({'bg_color': '#E2E2E2'})
+    bg_format2 = workbook.add_format({'bg_color': 'white'})  # white cell background color
+
+    skip_three = 3
+    for row in range(df.shape[0]+3):
+        if skip_three > 0:
+            skip_three -= 1
+            continue
+        worksheet.set_row(row, cell_format=(bg_format1 if row % 2 == 0 else bg_format2))
 
     df.to_excel(writer, index=False, sheet_name="Capabilities - Added", startrow=3, header=False)
-
-
 
 
 

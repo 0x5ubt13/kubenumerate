@@ -802,10 +802,10 @@ class Kubenumerate:
             KeyError
 
     def apparmor(self, df, writer):
+        """AppArmor annotation disabled and missing"""
         try:
             # Apparmor disabled
-            df_apparmor_disabled = df[df['AuditResultName']
-                                      == 'AppArmorDisabled']
+            df_apparmor_disabled = df[df['AuditResultName'] == 'AppArmorDisabled']
             df_apparmor_disabled = df_apparmor_disabled[[
                 "ResourceNamespace", "ResourceKind", "ResourceName", "Container", "AnnotationValue", "msg"]]
             df_apparmor_disabled.rename(columns={
@@ -817,67 +817,135 @@ class Kubenumerate:
                 "msg": "Recommendation",
             })
 
-            df_apparmor_disabled.to_excel(
-                writer,
-                sheet_name="Apparmor - Disabled",
-                index=False,
-                freeze_panes=(1, 0))
+            self.colour_cells_and_save_to_excel(
+                "AppArmor Annotation - Disabled",
+                "AppArmor is a Mandatory Access Control (MAC) system used by Linux. "
+                "It is enabled by adding container.apparmor.security.beta.kubernetes.io/[container name] as a pod-level"
+                " annotation and setting its value to either runtime/default or a profile (localhost/[profile name]).",
+                "Apparmor - Disabled",
+                df_apparmor_disabled,
+                writer
+            )
+            # TODO: delete if all ok
+            # df_apparmor_disabled.to_excel(
+            #     writer,
+            #     sheet_name="",
+            #     index=False,
+            #     freeze_panes=(1, 0))
 
             self.hardened = False
-        except:
-            KeyError
+        except KeyError:
+            if self.verbosity > 1:
+                print(f'[{self.cyan_text("*")}] "Apparmor - Disabled" not detected')
 
         try:
             # Apparmor annotation missing
-            df_apparmor_missing = df[df['AuditResultName']
-                                     == 'AppArmorAnnotationMissing']
+            df_apparmor_missing = df[df['AuditResultName'] == 'AppArmorAnnotationMissing']
             df_apparmor_missing = df_apparmor_missing[[
                 "ResourceNamespace", "ResourceKind", "ResourceName", "Container", "MissingAnnotation", "msg"]]
-            df_apparmor_missing.to_excel(
-                writer,
-                sheet_name="Apparmor - Missing",
-                index=False,
-                freeze_panes=(1, 0))
+            df_apparmor_missing.rename(columns={
+                "ResourceNamespace": "Resource Namespace",
+                "ResourceKind": "Resource Kind",
+                "ResourceName": "Resource Name",
+                "Container": "Affected Container",
+                "MissingAnnotation": "Missing Annotation",
+                "msg": "Recommendation",
+            })
+
+            self.colour_cells_and_save_to_excel(
+                "AppArmor - Missing Annotation",
+                "AppArmor is a Mandatory Access Control (MAC) system used by Linux. "
+                "It is enabled by adding container.apparmor.security.beta.kubernetes.io/[container name] as a pod-level"
+                " annotation and setting its value to either runtime/default or a profile (localhost/[profile name]).",
+                "Apparmor - Missing",
+                df_apparmor_missing,
+                writer
+            )
+            # TODO: delete after checking all good
+            # df_apparmor_missing.to_excel(
+            #     writer,
+            #     sheet_name="Apparmor - Missing",
+            #     index=False,
+            #     freeze_panes=(1, 0))
 
             self.hardened = False
-        except:
-            KeyError
+        except KeyError:
+            if self.verbosity > 1:
+                print(f'[{self.cyan_text("*")}] "Apparmor - Missing" not detected')
 
     def asat(self, df, writer):
         """Automount ServiceAccount Token True And Default SA"""
-
         try:
-            df_automount_sa = df[df['AuditResultName'] ==
-                                 'AutomountServiceAccountTokenTrueAndDefaultSA']
+            df_automount_sa = df[df['AuditResultName'] == 'AutomountServiceAccountTokenTrueAndDefaultSA']
             df_automount_sa = df_automount_sa[[
                 "ResourceNamespace", "ResourceKind", "ResourceName", "Container", "Metadata", "msg"]]
 
-            df_automount_sa.to_excel(
-                writer,
-                sheet_name="Automount SA",
-                index=False,
-                freeze_panes=(1, 0))
+            df_automount_sa.rename(columns={
+                "ResourceNamespace": "Resource Namespace",
+                "ResourceKind": "Resource Kind",
+                "ResourceName": "Resource Name",
+                "Container": "Affected Container",
+                "Metadata": "Metadata",
+                "msg": "Recommendation",
+            })
+
+            self.colour_cells_and_save_to_excel(
+                "Automount ServiceAccount Token True And Default ServiceAccount",
+                "Automounting a default service account would allow any compromised pod to run API commands "
+                "against the cluster. Either automounting should be disabled or a non-default service account with sane"
+                " permissions should be used.",
+                "Automount SA",
+                df_automount_sa,
+                writer
+            )
+            # TODO: remove when checked
+            # df_automount_sa.to_excel(
+            #     writer,
+            #     sheet_name="Automount SA",
+            #     index=False,
+            #     freeze_panes=(1, 0))
             self.automount = True
-        except:
-            KeyError
+        except KeyError:
+            if self.verbosity > 1:
+                print(f'[{self.cyan_text("*")}] "Apparmor - Missing" not detected')
 
     def caps(self, df, writer):
         """Capabilities"""
-
         try:
             # Missing Caps or Security Context
-            df_missing_capabilities_or_seccontext = df[df['AuditResultName']
-                                                       == 'CapabilityOrSecurityContextMissing']
+            df_missing_capabilities_or_seccontext = df[df['AuditResultName'] == 'CapabilityOrSecurityContextMissing']
             df_missing_capabilities_or_seccontext = df_missing_capabilities_or_seccontext[[
                 "ResourceNamespace", "ResourceKind", "ResourceName", "Container", "Metadata", "msg"]]
-            df_missing_capabilities_or_seccontext.to_excel(
-                writer,
-                sheet_name="Capabilities - Missing",
-                index=False,
-                freeze_panes=(1, 0))
-            self.hardened = False
-        except:
-            KeyError
+
+            df_missing_capabilities_or_seccontext.rename(columns={
+                "ResourceNamespace": "Resource Namespace",
+                "ResourceKind": "Resource Kind",
+                "ResourceName": "Resource Name",
+                "Container": "Affected Container",
+                "Metadata": "Metadata",
+                "msg": "Recommendation",
+            })
+
+            self.colour_cells_and_save_to_excel(
+                "Capabilities or Security Context Missing",
+                "",
+                "Automount SA",
+                df_missing_capabilities_or_seccontext,
+                writer
+            )
+
+        except KeyError:
+            if self.verbosity > 1:
+                print(f'[{self.cyan_text("*")}] "Apparmor - Missing" not detected')
+            # TODO: delete
+            # df_missing_capabilities_or_seccontext.to_excel(
+            #     writer,
+            #     sheet_name="Capabilities - Missing",
+            #     index=False,
+            #     freeze_panes=(1, 0))
+            # self.hardened = False
+        # except:
+        #     KeyError
 
         try:
             # Added Caps
@@ -885,6 +953,14 @@ class Kubenumerate:
                                        == 'CapabilityAdded']
             df_added_capabilities = df_added_capabilities[[
                 "ResourceNamespace", "ResourceKind", "ResourceName", "Container", "Metadata", "msg"]]
+            df.rename(columns={
+                "ResourceNamespace": "Resource Namespace",
+                "ResourceKind": "Resource Kind",
+                "ResourceName": "Resource Name",
+                "Container": "Affected Container",
+                "Metadata": "Metadata",
+                "msg": "Recommendation",
+            })
             df_added_capabilities.to_excel(
                 writer,
                 sheet_name="Capabilities - Added",
@@ -1520,11 +1596,46 @@ class Kubenumerate:
         if not self.limits_set:
             print(f'\t{self.red_text("[!]")} CPU usage')
 
-        # Suggest using RBAC Police
+        # Suggest using RBAC Police (implementing this in the future)
         if self.rbac_police:
             print(
                 f'{self.yellow_text("[!]")} Running RBAC Police next might be interesting...\n\t('
                 f'https://github.com/PaloAltoNetworks/rbac-police)')
+
+    def colour_cells_and_save_to_excel(self, title, subtitle, sheet_name, df, writer):
+        workbook = writer.book
+        worksheet = workbook.add_worksheet(sheet_name)
+        worksheet.set_zoom(90)
+
+        worksheet.set_column(0, len(df.columns) - 1, 20)
+        header_format = workbook.add_format({
+            'font_name': 'Calibri', 'bg_color': '#A93545', 'bold': True, 'font_color': 'white', 'align': 'left'})
+        # title = "AppArmor Disabled"
+        # title = "Capabilities - Added"
+        # merge cells
+        title_format = workbook.add_format({
+            'font_name': 'Calibri', 'bg_color': '#A93545', 'font_color': 'white','font_size': 20})
+        bg_format1 = workbook.add_format({'bg_color': '#E2E2E2'})
+        bg_format2 = workbook.add_format({'bg_color': 'white'})
+
+        # subtitle = "Capabilities (specifically, Linux capabilities), are used for permission management in Linux. Some capabilities are enabled by default."
+        # subtitle = "AppArmor is enabled by adding container.apparmor.security.beta.kubernetes.io/[container name] as a pod-level annotation and setting its value to either runtime/default or a profile (localhost/[profile name])."
+        # note down how many cells title and subheader require
+        worksheet.merge_range('A1:AC1', title, title_format)
+        worksheet.merge_range('A2:AC2', subtitle)
+        worksheet.set_row(2, 15)  # row height 15
+
+        for col_num, value in enumerate(df.columns.values):
+            worksheet.write(2, col_num, value, header_format)
+        worksheet.freeze_panes(3, 0)
+        skip_three = 3
+        for row in range(df.shape[0] + 3):
+            if skip_three > 0:
+                skip_three -= 1
+                continue
+            worksheet.set_row(row, cell_format=(bg_format1 if row % 2 == 0 else bg_format2))
+
+        df.to_excel(writer, index=False, sheet_name="Capabilities - Added", startrow=3, header=False)
 
     def print_banner(self):
         banner = ("\n"
