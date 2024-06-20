@@ -13,6 +13,7 @@ import subprocess
 import sys
 import time
 import yaml
+from xlsxwriter.exceptions import DuplicateWorksheetName
 
 
 class Kubenumerate:
@@ -301,6 +302,10 @@ class Kubenumerate:
             # Use default
             self.kubeaudit_file = f"{self.out_path}kubeaudit_all.json"
 
+        # Set correct verbosity
+        if self.args.verbosity != 1:
+            self.verbosity = int(self.args.verbosity)
+
         # Use pods file passed for trivy
         if self.args.trivy_file is not None:
             self.trivy_file = f"{os.getcwd()}/{self.args.trivy_file}"
@@ -476,9 +481,10 @@ class Kubenumerate:
 
         # Start progress bar
         start = time.time()
+        self.show_status_bar(0, "resources", total_resources, start=start)
         try:
-            self.show_status_bar(0, "resources", total_resources, start=start)
             for i, resource in enumerate(resources):
+                self.show_status_bar(i + 1, "resources", total_resources, start=start)
                 # Skip if it already exists
                 if os.path.exists(f'{self.kubectl_path}{resource}.json'):
                     if self.verbosity > 0:
@@ -531,12 +537,11 @@ class Kubenumerate:
                 # And append to the catch-all file for global queries
                 with open(kubectl_yaml_file, '+a') as f:
                     f.write(stdout.decode("utf-8"))
-                self.show_status_bar(i + 1, "resources", total_resources, start=start)
 
         except ZeroDivisionError:
             print(f'{self.red_text("[-]")} Error: No resources were found. Are you connected to the cluster?')
 
-        print("\n", flush=True, file=sys.stderr)
+        print("\n", flush=True, file=sys.stdout)
 
     def launch_gatherer_tools(self):
         """Launch kubeaudit, kube-bench and trivy"""
@@ -744,62 +749,84 @@ class Kubenumerate:
 
     def cis(self, df, writer):
         """Parse the kube-bench JSON file to generate a sheet containing the CIS benchmarks that failed and warned"""
-
         try:
             # Fail
             df_failed_cis = df[df['status'] == 'FAIL']
-            df_failed_cis = df_failed_cis[["status",
-                                           "test_number",
-                                           "test_desc",
-                                           "audit",
-                                           "AuditConfig",
-                                           "reason",
-                                           "remediation"]]
-            df_failed_cis.to_excel(
-                writer,
-                sheet_name="CIS benchmarks - Fail",
-                index=False,
-                freeze_panes=(1, 0))
+            df_failed_cis = df_failed_cis[[
+                "status", "test_number", "test_desc", "audit", "AuditConfig", "reason", "remediation"]]
+            df_failed_cis = df_failed_cis.rename(columns={
+                "status": "Status",
+                "test_number": "Test Number",
+                "test_desc": "Test Description",
+                "audit": "Audit",
+                "AuditConfig": "Audit Config",
+                "reason": "Reason",
+                "remediation": "Remediation"
+            })
+            self.colour_cells_and_save_to_excel(
+                "CIS Benchmarks - Fail",
+                "Failed CIS Benchmarks",
+                "CIS Benchmarks - Fail",
+                df_failed_cis,
+                writer
+            )
             self.cis_detected = True
-        except:
-            KeyError
+        except KeyError:
+            if self.verbosity > 1:
+                print(f'[{self.cyan_text("*")}] "CIS benchmarks - Fail" not detected')
 
         try:
             # Warn
             df_warn_cis = df[df['status'] == 'WARN']
-            df_warn_cis = df_warn_cis[["status",
-                                       "test_number",
-                                       "test_desc",
-                                       "audit",
-                                       "AuditConfig",
-                                       "reason",
-                                       "remediation"]]
-            df_warn_cis.to_excel(
-                writer,
-                sheet_name="CIS benchmarks - Warn",
-                index=False,
-                freeze_panes=(1, 0))
+            df_warn_cis = df_warn_cis[[
+                "status", "test_number", "test_desc", "audit", "AuditConfig", "reason", "remediation"]]
+            df_warn_cis = df_warn_cis.rename(columns={
+                "status": "Status",
+                "test_number": "Test Number",
+                "test_desc": "Test Description",
+                "audit": "Audit",
+                "AuditConfig": "Audit Config",
+                "reason": "Reason",
+                "remediation": "Remediation"
+            })
+            self.colour_cells_and_save_to_excel(
+                "CIS Benchmarks - Warn",
+                "Warn CIS Benchmarks",
+                "CIS Benchmarks - Warn",
+                df_warn_cis,
+                writer
+            )
             self.cis_detected = True
-        except:
-            KeyError
+        except KeyError:
+            if self.verbosity > 1:
+                print(f'[{self.cyan_text("*")}] "CIS benchmarks - Warn" not detected')
 
         try:
             # Pass
             df_pass_cis = df[df['status'] == 'PASS']
-            df_pass_cis = df_pass_cis[["status",
-                                       "test_number",
-                                       "test_desc",
-                                       "audit",
-                                       "AuditConfig",
-                                       "reason",
-                                       "remediation"]]
-            df_pass_cis.to_excel(
-                writer,
-                sheet_name="CIS benchmarks - Pass",
-                index=False,
-                freeze_panes=(1, 0))
-        except:
-            KeyError
+            df_pass_cis = df_pass_cis[[
+                "status", "test_number", "test_desc", "audit", "AuditConfig", "reason", "remediation"]]
+            df_pass_cis = df_pass_cis.rename(columns={
+                "status": "Status",
+                "test_number": "Test Number",
+                "test_desc": "Test Description",
+                "audit": "Audit",
+                "AuditConfig": "Audit Config",
+                "reason": "Reason",
+                "remediation": "Remediation"
+            })
+            self.colour_cells_and_save_to_excel(
+                "CIS benchmarks - Pass",
+                "Passed CIS Benchmarks",
+                "CIS benchmarks - Pass",
+                df_pass_cis,
+                writer
+            )
+            self.cis_detected = True
+
+        except KeyError:
+            if self.verbosity > 1:
+                print(f'[{self.cyan_text("*")}] "CIS benchmarks - Warn" not detected')
 
     def apparmor(self, df, writer):
         """AppArmor annotation disabled and missing"""
@@ -808,7 +835,7 @@ class Kubenumerate:
             df_apparmor_disabled = df[df['AuditResultName'] == 'AppArmorDisabled']
             df_apparmor_disabled = df_apparmor_disabled[[
                 "ResourceNamespace", "ResourceKind", "ResourceName", "Container", "AnnotationValue", "msg"]]
-            df_apparmor_disabled.rename(columns={
+            df_apparmor_disabled = df_apparmor_disabled.rename(columns={
                 "ResourceNamespace": "Resource Namespace",
                 "ResourceKind": "Resource Kind",
                 "ResourceName": "Resource Name",
@@ -816,7 +843,6 @@ class Kubenumerate:
                 "AnnotationValue": "Annotation Value",
                 "msg": "Recommendation",
             })
-
             self.colour_cells_and_save_to_excel(
                 "AppArmor Annotation - Disabled",
                 "AppArmor is a Mandatory Access Control (MAC) system used by Linux. "
@@ -826,13 +852,6 @@ class Kubenumerate:
                 df_apparmor_disabled,
                 writer
             )
-            # TODO: delete if all ok
-            # df_apparmor_disabled.to_excel(
-            #     writer,
-            #     sheet_name="",
-            #     index=False,
-            #     freeze_panes=(1, 0))
-
             self.hardened = False
         except KeyError:
             if self.verbosity > 1:
@@ -843,7 +862,7 @@ class Kubenumerate:
             df_apparmor_missing = df[df['AuditResultName'] == 'AppArmorAnnotationMissing']
             df_apparmor_missing = df_apparmor_missing[[
                 "ResourceNamespace", "ResourceKind", "ResourceName", "Container", "MissingAnnotation", "msg"]]
-            df_apparmor_missing.rename(columns={
+            df_apparmor_missing = df_apparmor_missing.rename(columns={
                 "ResourceNamespace": "Resource Namespace",
                 "ResourceKind": "Resource Kind",
                 "ResourceName": "Resource Name",
@@ -851,7 +870,6 @@ class Kubenumerate:
                 "MissingAnnotation": "Missing Annotation",
                 "msg": "Recommendation",
             })
-
             self.colour_cells_and_save_to_excel(
                 "AppArmor - Missing Annotation",
                 "AppArmor is a Mandatory Access Control (MAC) system used by Linux. "
@@ -861,13 +879,6 @@ class Kubenumerate:
                 df_apparmor_missing,
                 writer
             )
-            # TODO: delete after checking all good
-            # df_apparmor_missing.to_excel(
-            #     writer,
-            #     sheet_name="Apparmor - Missing",
-            #     index=False,
-            #     freeze_panes=(1, 0))
-
             self.hardened = False
         except KeyError:
             if self.verbosity > 1:
@@ -878,17 +889,13 @@ class Kubenumerate:
         try:
             df_automount_sa = df[df['AuditResultName'] == 'AutomountServiceAccountTokenTrueAndDefaultSA']
             df_automount_sa = df_automount_sa[[
-                "ResourceNamespace", "ResourceKind", "ResourceName", "Container", "Metadata", "msg"]]
-
-            df_automount_sa.rename(columns={
+                "ResourceNamespace", "ResourceKind", "ResourceName", "msg"]]
+            df_automount_sa = df_automount_sa.rename(columns={
                 "ResourceNamespace": "Resource Namespace",
                 "ResourceKind": "Resource Kind",
                 "ResourceName": "Resource Name",
-                "Container": "Affected Container",
-                "Metadata": "Metadata",
                 "msg": "Recommendation",
             })
-
             self.colour_cells_and_save_to_excel(
                 "Automount ServiceAccount Token True And Default ServiceAccount",
                 "Automounting a default service account would allow any compromised pod to run API commands "
@@ -898,16 +905,10 @@ class Kubenumerate:
                 df_automount_sa,
                 writer
             )
-            # TODO: remove when checked
-            # df_automount_sa.to_excel(
-            #     writer,
-            #     sheet_name="Automount SA",
-            #     index=False,
-            #     freeze_panes=(1, 0))
             self.automount = True
         except KeyError:
             if self.verbosity > 1:
-                print(f'[{self.cyan_text("*")}] "Apparmor - Missing" not detected')
+                print(f'[{self.cyan_text("*")}] "Automount SA" not detected')
 
     def caps(self, df, writer):
         """Capabilities"""
@@ -915,45 +916,33 @@ class Kubenumerate:
             # Missing Caps or Security Context
             df_missing_capabilities_or_seccontext = df[df['AuditResultName'] == 'CapabilityOrSecurityContextMissing']
             df_missing_capabilities_or_seccontext = df_missing_capabilities_or_seccontext[[
-                "ResourceNamespace", "ResourceKind", "ResourceName", "Container", "Metadata", "msg"]]
-
-            df_missing_capabilities_or_seccontext.rename(columns={
+                "ResourceNamespace", "ResourceKind", "ResourceName", "Container", "msg"]]
+            df_missing_capabilities_or_seccontext = df_missing_capabilities_or_seccontext.rename(columns={
                 "ResourceNamespace": "Resource Namespace",
                 "ResourceKind": "Resource Kind",
                 "ResourceName": "Resource Name",
                 "Container": "Affected Container",
-                "Metadata": "Metadata",
                 "msg": "Recommendation",
             })
-
             self.colour_cells_and_save_to_excel(
                 "Capabilities or Security Context Missing",
-                "",
-                "Automount SA",
+                "Capabilities (specifically, Linux capabilities), are used for permission management in Linux. "
+                "Some capabilities are enabled by default.",
+                "Capabilities - Missing",
                 df_missing_capabilities_or_seccontext,
                 writer
             )
-
+            self.hardened = False
         except KeyError:
             if self.verbosity > 1:
-                print(f'[{self.cyan_text("*")}] "Apparmor - Missing" not detected')
-            # TODO: delete
-            # df_missing_capabilities_or_seccontext.to_excel(
-            #     writer,
-            #     sheet_name="Capabilities - Missing",
-            #     index=False,
-            #     freeze_panes=(1, 0))
-            # self.hardened = False
-        # except:
-        #     KeyError
+                print(f'[{self.cyan_text("*")}] "Capabilities - Missing" not detected')
 
         try:
             # Added Caps
-            df_added_capabilities = df[df['AuditResultName']
-                                       == 'CapabilityAdded']
+            df_added_capabilities = df[df['AuditResultName'] == 'CapabilityAdded']
             df_added_capabilities = df_added_capabilities[[
                 "ResourceNamespace", "ResourceKind", "ResourceName", "Container", "Metadata", "msg"]]
-            df.rename(columns={
+            df_added_capabilities = df_added_capabilities.rename(columns={
                 "ResourceNamespace": "Resource Namespace",
                 "ResourceKind": "Resource Kind",
                 "ResourceName": "Resource Name",
@@ -961,14 +950,18 @@ class Kubenumerate:
                 "Metadata": "Metadata",
                 "msg": "Recommendation",
             })
-            df_added_capabilities.to_excel(
-                writer,
-                sheet_name="Capabilities - Added",
-                index=False,
-                freeze_panes=(1, 0))
+            self.colour_cells_and_save_to_excel(
+                "Capabilities Added that may not be necessary",
+                "Capabilities (specifically, Linux capabilities), are used for permission management in Linux. "
+                "Some capabilities are enabled by default.",
+                "Capabilities - Added",
+                df_added_capabilities,
+                writer
+            )
             self.hardened = False
-        except:
-            KeyError
+        except KeyError:
+            if self.verbosity > 1:
+                print(f'[{self.cyan_text("*")}] "Capabilities - Added" not detected')
 
         try:
             # Capability Should Drop All
@@ -976,21 +969,32 @@ class Kubenumerate:
                                      == 'CapabilityShouldDropAll']
             df_caps_should_drop = df_caps_should_drop[[
                 "ResourceNamespace", "ResourceKind", "ResourceName", "Container", "msg"]]
-            df_caps_should_drop.to_excel(
-                writer,
-                sheet_name="Capabilities - No Drop All",
-                index=False,
-                freeze_panes=(1, 0))
+            df_caps_should_drop = df_caps_should_drop.rename(columns={
+                "ResourceNamespace": "Resource Namespace",
+                "ResourceKind": "Resource Kind",
+                "ResourceName": "Resource Name",
+                "Container": "Affected Container",
+                "msg": "Recommendation",
+            })
+            self.colour_cells_and_save_to_excel(
+                "Capabilities should drop all",
+                "Capabilities (specifically, Linux capabilities), are used for permission management in Linux. "
+                "Ideally, all capabilities should be dropped."
+                "Some capabilities are enabled by default. If capabilities are required, only those required "
+                "capabilities should be added",
+                "Capabilities - No Drop All",
+                df_caps_should_drop,
+                writer
+            )
             self.hardened = False
-        except:
-            KeyError
+        except KeyError:
+            if self.verbosity > 1:
+                print(f'[{self.cyan_text("*")}] "Capabilities - No Drop All" not detected')
 
     def dep_api(self, df, writer):
         """Deprecated API used"""
-
         try:
-            df_dep_api_used = df[df['AuditResultName']
-                                 == 'DeprecatedAPIUsed']
+            df_dep_api_used = df[df['AuditResultName'] == 'DeprecatedAPIUsed']
             df_dep_api_used = df_dep_api_used[["ResourceName",
                                                "ResourceKind",
                                                "IntroducedMajor",
@@ -1000,322 +1004,483 @@ class Kubenumerate:
                                                "RemovedMajor",
                                                "RemovedMinor",
                                                "ResourceApiVersion",
-                                               "ReplacementGroup",
-                                               "ReplacementKind",
                                                "msg"]]
-            df_dep_api_used.to_excel(
-                writer,
-                sheet_name="Deprecated API Used",
-                index=False,
-                freeze_panes=(1, 0))
+            df_dep_api_used = df_dep_api_used.rename(columns={
+                "ResourceName": "Resource Name",
+                "ResourceKind": "Resource Kind",
+                "IntroducedMajor": "Introduced Major",
+                "IntroducedMinor": "Introduced Minor",
+                "DeprecatedMajor": "Deprecated Major",
+                "DeprecatedMinor": "Deprecated Minor",
+                "RemovedMajor": "Removed Major",
+                "RemovedMinor": "Removed Minor",
+                "ResourceApiVersion": "Resource API Version",
+                "msg": "Recommendation"
+            })
+            self.colour_cells_and_save_to_excel(
+                "Deprecated APIs in use",
+                "Deprecated APIs in use were found. They will be removed, see recommended replacement APIs.",
+                "Deprecated API Used",
+                df_dep_api_used,
+                writer
+            )
             self.depr_api = True
         except KeyError:
-            try:
-                df_dep_api_used = df[df['AuditResultName']
-                                     == 'DeprecatedAPIUsed']
-                df_dep_api_used = df_dep_api_used[["ResourceName",
-                                                   "ResourceKind",
-                                                   "IntroducedMajor",
-                                                   "IntroducedMinor",
-                                                   "DeprecatedMajor",
-                                                   "DeprecatedMinor",
-                                                   "RemovedMajor",
-                                                   "RemovedMinor",
-                                                   "ResourceApiVersion",
-                                                   "msg"]]
-                df_dep_api_used.to_excel(
-                    writer,
-                    sheet_name="Deprecated API Used",
-                    index=False,
-                    freeze_panes=(1, 0))
-                self.depr_api = True
-            except:
-                KeyError
+            if self.verbosity > 1:
+                print(f'[{self.cyan_text("*")}] "Deprecated API Used')
+
 
     def host_ns(self, df, writer):
         """Host namespace"""
-
         try:
             # Namespace Host PID True
-            df_ns_host_pid_true = df[df['AuditResultName']
-                                     == 'NamespaceHostPIDTrue']
+            df_ns_host_pid_true = df[df['AuditResultName'] == 'NamespaceHostPIDTrue']
             df_ns_host_pid_true = df_ns_host_pid_true[[
                 "ResourceNamespace", "ResourceKind", "ResourceName", "msg"]]
-            df_ns_host_pid_true.to_excel(
-                writer,
-                sheet_name="Host Namespace - hostPID true",
-                index=False,
-                freeze_panes=(1, 0))
+            df_ns_host_pid_true = df_ns_host_pid_true.rename(columns={
+                "ResourceNamespace": "Resource Namespace",
+                "ResourceKind": "Resource Kind",
+                "ResourceName": "Resource Name",
+                "msg": "Recommendation",
+            })
+            self.colour_cells_and_save_to_excel(
+                "Host Namespace - hostPID set to true",
+                "HostPID - Controls whether the pod containers can share the host process ID namespace. "
+                "Note that when paired with ptrace this can be used to escalate privileges outside of the container "
+                "(ptrace is forbidden by default).",
+                "Host Namespace - hostPID true",
+                df_ns_host_pid_true,
+                writer
+            )
             self.hardened = False
-        except:
-            KeyError
+        except KeyError:
+            if self.verbosity > 1:
+                print(f'[{self.cyan_text("*")}] "Host Namespace - hostPID true" not detected')
 
         try:
             # Namespace Host PID True
-            df_ns_host_network_true = df[df['AuditResultName']
-                                         == 'NamespaceHostNetworkTrue']
+            df_ns_host_network_true = df[df['AuditResultName'] == 'NamespaceHostNetworkTrue']
             df_ns_host_network_true = df_ns_host_network_true[[
                 "ResourceNamespace", "ResourceKind", "ResourceName", "msg"]]
-            df_ns_host_network_true.to_excel(
-                writer,
-                sheet_name="Host Namespace-hostNetwork true",
-                index=False,
-                freeze_panes=(1, 0))
+            df_ns_host_network_true = df_ns_host_network_true.rename(columns={
+                "ResourceNamespace": "Resource Namespace",
+                "ResourceKind": "Resource Kind",
+                "ResourceName": "Resource Name",
+                "msg": "Recommendation",
+            })
+            self.colour_cells_and_save_to_excel(
+                "Host Namespace - hostNetwork set to true",
+                "HostNetwork - Controls whether the pod may use the node network namespace. "
+                "Doing so gives the pod access to the loopback device, services listening on localhost, and could "
+                "be used to snoop on network activity of other pods on the same node.",
+                "Host Namespace-hostNetwork true",
+                df_ns_host_network_true,
+                writer
+            )
             self.hardened = False
-        except:
-            KeyError
+        except KeyError:
+            if self.verbosity > 1:
+                print(f'[{self.cyan_text("*")}] "Host Namespace - hostNetwork true" not detected')
 
     def limits(self, df, writer):
         """Limits"""
-
         try:
             # Limits Not Set
             df_limits_not_set = df[df['AuditResultName'] == 'LimitsNotSet']
             df_limits_not_set = df_limits_not_set[[
                 "ResourceNamespace", "ResourceKind", "ResourceName", "Container", "msg"]]
-            df_limits_not_set.to_excel(
-                writer,
-                sheet_name="Limits - Not set",
-                index=False,
-                freeze_panes=(1, 0))
+            df_limits_not_set = df_limits_not_set.rename(columns={
+                "ResourceNamespace": "Resource Namespace",
+                "ResourceKind": "Resource Kind",
+                "ResourceName": "Resource Name",
+                "Container": "Affected Container",
+                "msg": "Recommendation",
+            })
+            self.colour_cells_and_save_to_excel(
+                "Resource Limits Not Set",
+                "Containers without resource limits set could be used to consume resources which would have a "
+                "negative impact on the cluster",
+                "Limits - Not set",
+                df_limits_not_set,
+                writer
+            )
             self.limits_set = False
-        except:
-            KeyError
+        except KeyError:
+            if self.verbosity > 1:
+                print(f'[{self.cyan_text("*")}] "Limits - Not set" not detected')
 
         try:
             # Limits CPU Not Set
-            df_limits_cpu_not_set = df[df['AuditResultName']
-                                       == 'LimitsCPUNotSet']
+            df_limits_cpu_not_set = df[df['AuditResultName'] == 'LimitsCPUNotSet']
             df_limits_cpu_not_set = df_limits_cpu_not_set[[
                 "ResourceNamespace", "ResourceKind", "ResourceName", "Container", "msg"]]
-            df_limits_cpu_not_set.to_excel(
-                writer,
-                sheet_name="Limits - CPU Not set",
-                index=False,
-                freeze_panes=(1, 0))
+            df_limits_cpu_not_set = df_limits_cpu_not_set.rename(columns={
+                "ResourceNamespace": "Resource Namespace",
+                "ResourceKind": "Resource Kind",
+                "ResourceName": "Resource Name",
+                "Container": "Affected Container",
+                "msg": "Recommendation",
+            })
+            self.colour_cells_and_save_to_excel(
+                "CPU Limits Not Set",
+                "Containers without CPU limits set could be used to consume resources which would have a "
+                "negative impact on the cluster",
+                "Limits - CPU Not set",
+                df_limits_cpu_not_set,
+                writer
+            )
             self.limits_set = False
-        except:
-            KeyError
+        except KeyError:
+            if self.verbosity > 1:
+                print(f'[{self.cyan_text("*")}] "Limits - CPU Not set" not detected')
 
     def mounts(self, df, writer):
         """Mounted paths"""
-
         try:
             # Sensitive Paths Mounted
-            df_sensitive_paths_mounted = df[df['AuditResultName']
-                                            == 'SensitivePathsMounted']
-            df_sensitive_paths_mounted = df_sensitive_paths_mounted[["MountName",
-                                                                     "MountPath",
-                                                                     "MountReadOnly",
-                                                                     "MountVolume",
-                                                                     "MountVolumeHostPath",
-                                                                     "ResourceNamespace",
-                                                                     "ResourceKind",
-                                                                     "ResourceName",
-                                                                     "Container",
-                                                                     "msg"]]
-            df_sensitive_paths_mounted.to_excel(
-                writer,
-                sheet_name="Mounts - Sensitive Paths",
-                index=False,
-                freeze_panes=(1, 0))
+            df_sensitive_paths_mounted = df[df['AuditResultName'] == 'SensitivePathsMounted']
+            df_sensitive_paths_mounted = df_sensitive_paths_mounted[
+                ["MountName", "MountPath", "MountReadOnly", "MountVolume", "MountVolumeHostPath", "ResourceNamespace",
+                 "ResourceKind", "ResourceName", "Container", "msg"]]
+            df_sensitive_paths_mounted = df_sensitive_paths_mounted.rename(columns={
+                "MountName": "Mount Name",
+                "MountPath": "Mount Path",
+                "MountReadOnly": "Mount ReadOnly",
+                "MountVolume": "Mount Volume",
+                "MountVolumeHostPath": "Mount Volume Host Path",
+                "ResourceNamespace": "Resource Namespace",
+                "ResourceKind": "Resource Kind",
+                "ResourceName": "Resource Name",
+                "Container": "Affected Container",
+                "msg": "Recommendation",
+            })
+            self.colour_cells_and_save_to_excel(
+                "Sensitive Paths Mounted to Containers",
+                "Mounting some sensitive host paths (like /etc, /proc, or /var/run/docker.sock) may allow a "
+                "container to access sensitive information from the host like credentials or to spy on other workloads'"
+                " activity. These sensitive paths should not be mounted.",
+                "Mounts - Sensitive Paths",
+                df_sensitive_paths_mounted,
+                writer
+            )
             self.hardened = False
-        except:
-            KeyError
+        except KeyError:
+            if self.verbosity > 1:
+                print(f'[{self.cyan_text("*")}] "Mounts - Sensitive Paths" not detected')
 
     def net_pols(self, df, writer):
         """Network policies"""
-
         try:
             # Missing Default Deny Ingress And Egress Network Policy
-            df_default_deny_missing = df[df['AuditResultName'] ==
-                                         'MissingDefaultDenyIngressAndEgressNetworkPolicy']
-            df_default_deny_missing = df_default_deny_missing[[
-                "ResourceKind", "ResourceName", "msg"]]
-            df_default_deny_missing.to_excel(
-                writer,
-                sheet_name="NetworkPolicies - No deny",
-                index=False,
-                freeze_panes=(1, 0))
+            df_default_deny_missing = df[df['AuditResultName'] == 'MissingDefaultDenyIngressAndEgressNetworkPolicy']
+            df_default_deny_missing = df_default_deny_missing[["ResourceKind", "ResourceName", "msg"]]
+            df_default_deny_missing = df_default_deny_missing.rename(columns={
+                "ResourceKind": "Resource Kind",
+                "ResourceName": "Resource Name",
+                "msg": "Recommendation",
+            })
+            self.colour_cells_and_save_to_excel(
+                "NetworkPolicies - No default deny Ingress/Egress",
+                "Just like with firewall rules, the best practice is to deny all internet traffic by default "
+                "and explicitly allow expected traffic (that is, allow expected traffic rather than deny unexpected "
+                "traffic).",
+                "NetworkPolicies - No deny",
+                df_default_deny_missing,
+                writer
+            )
             self.hardened = False
             self.rbac_police = True
-        except:
-            KeyError
+        except KeyError:
+            if self.verbosity > 1:
+                print(f'[{self.cyan_text("*")}] "NetworkPolicies - No deny" not detected')
 
         try:
             # AllowAllEgressNetworkPolicyExists
-            df_allow_all = df[df['AuditResultName'] ==
-                              'AllowAllEgressNetworkPolicyExists']
+            df_allow_all = df[df['AuditResultName'] == 'AllowAllEgressNetworkPolicyExists']
             df_allow_all = df_allow_all[[
                 "ResourceKind", "ResourceName", "msg"]]
-            df_allow_all.to_excel(
-                writer,
-                sheet_name="NetworkPolicies - Allow all",
-                index=False,
-                freeze_panes=(1, 0))
+            df_allow_all = df_allow_all.rename(columns={
+                "ResourceKind": "Resource Kind",
+                "ResourceName": "Resource Name",
+                "msg": "Recommendation",
+            })
+            self.colour_cells_and_save_to_excel(
+                "Allow All Egress NetworkPolicy Exists",
+                "Just like with firewall rules, the best practice is to deny all internet traffic by default "
+                "and explicitly allow expected traffic (that is, allow expected traffic rather than deny unexpected "
+                "traffic).",
+                "NetworkPolicies - Allow all",
+                df_allow_all,
+                writer
+            )
             self.hardened = False
-            self.rbac_police = True
-        except:
-            KeyError
+        except KeyError:
+            if self.verbosity > 1:
+                print(f'[{self.cyan_text("*")}] "NetworkPolicies - Allow all" not detected')
 
     def non_root(self, df, writer):
         """Running as"""
-
         try:
             # Run As Non Root PSC Nil CSC Nil
-            df_run_as_non_root_nil = df[df['AuditResultName']
-                                        == 'RunAsNonRootPSCNilCSCNil']
+            df_run_as_non_root_nil = df[df['AuditResultName'] == 'RunAsNonRootPSCNilCSCNil']
             df_run_as_non_root_nil = df_run_as_non_root_nil[[
                 "ResourceNamespace", "ResourceKind", "ResourceName", "Container", "msg"]]
-            df_run_as_non_root_nil.to_excel(
-                writer,
-                sheet_name="Non Root - Missing",
-                index=False,
-                freeze_panes=(1, 0))
+            df_run_as_non_root_nil = df_run_as_non_root_nil.rename(columns={
+                "ResourceNamespace": "Resource Namespace",
+                "ResourceKind": "Resource Kind",
+                "ResourceName": "Resource Name",
+                "Container": "Affected Container",
+                "msg": "Recommendation",
+            })
+            self.colour_cells_and_save_to_excel(
+                "Run As Non Root - Pod SecurityContext/Container SecurityContext Nil",
+                "Containers should be run as a non-root user with the minimum required permissions (principle "
+                "of least privilege). This can be done by setting runAsNonRoot to true in either the PodSecurityContext"
+                " or container SecurityContext. If runAsNonRoot is unset in the Container SecurityContext, it will "
+                "inherit the value of the Pod SecurityContext. If runAsNonRoot is unset in the Pod SecurityContext, "
+                "it defaults to false which means it must be explicitly set to true in either the Container "
+                "SecurityContext or the Pod SecurityContext for the nonroot audit to pass.",
+                "Non Root - Missing",
+                df_run_as_non_root_nil,
+                writer
+            )
             self.hardened = False
-        except:
-            KeyError
+        except KeyError:
+            if self.verbosity > 1:
+                print(f'[{self.cyan_text("*")}] "Non Root - Missing" not detected')
 
         try:
             # Run As User CSC Root
-            df_run_as_user_csc_root = df[df['AuditResultName']
-                                         == 'RunAsUserCSCRoot']
+            df_run_as_user_csc_root = df[df['AuditResultName'] == 'RunAsUserCSCRoot']
             df_run_as_user_csc_root = df_run_as_user_csc_root[[
                 "ResourceNamespace", "ResourceKind", "ResourceName", "Container", "msg"]]
-            df_run_as_user_csc_root.to_excel(
-                writer,
-                sheet_name="Non Root - CSC UID 0",
-                index=False,
-                freeze_panes=(1, 0))
+            df_run_as_user_csc_root = df_run_as_user_csc_root.rename(columns={
+                "ResourceNamespace": "Resource Namespace",
+                "ResourceKind": "Resource Kind",
+                "ResourceName": "Resource Name",
+                "Container": "Affected Container",
+                "msg": "Recommendation",
+            })
+            self.colour_cells_and_save_to_excel(
+                "Run As Non Root - CSC UID 0",
+                "Containers should be run as a non-root user with the minimum required permissions (principle "
+                "of least privilege). This can be done by setting runAsNonRoot to true in either the PodSecurityContext"
+                " or container SecurityContext. If runAsNonRoot is unset in the Container SecurityContext, it will "
+                "inherit the value of the Pod SecurityContext. If runAsNonRoot is unset in the Pod SecurityContext, "
+                "it defaults to false which means it must be explicitly set to true in either the Container "
+                "SecurityContext or the Pod SecurityContext for the nonroot audit to pass.",
+                "Non Root - CSC UID 0",
+                df_run_as_user_csc_root,
+                writer
+            )
             self.hardened = False
-        except:
-            KeyError
+        except KeyError:
+            if self.verbosity > 1:
+                print(f'[{self.cyan_text("*")}] "Non Root - CSC UID 0" not detected')
 
         try:
             # Run As User PSC Root
-            df_run_as_user_psc_root = df[df['AuditResultName']
-                                         == 'RunAsUserPSCRoot']
+            df_run_as_user_psc_root = df[df['AuditResultName'] == 'RunAsUserPSCRoot']
             df_run_as_user_psc_root = df_run_as_user_psc_root[[
                 "ResourceNamespace", "ResourceKind", "ResourceName", "Container", "msg"]]
-            df_run_as_user_psc_root.to_excel(
-                writer,
-                sheet_name="Non Root - PSC UID 0",
-                index=False,
-                freeze_panes=(1, 0))
+            df_run_as_user_psc_root = df_run_as_user_psc_root.rename(columns={
+                "ResourceNamespace": "Resource Namespace",
+                "ResourceKind": "Resource Kind",
+                "ResourceName": "Resource Name",
+                "Container": "Affected Container",
+                "msg": "Recommendation",
+            })
+            self.colour_cells_and_save_to_excel(
+                "Run As User UID 0 - Pod SecurityContext ",
+                "Containers should be run as a non-root user with the minimum required permissions (principle "
+                "of least privilege). This can be done by setting runAsNonRoot to true in either the PodSecurityContext"
+                " or container SecurityContext. If runAsNonRoot is unset in the Container SecurityContext, it will "
+                "inherit the value of the Pod SecurityContext. If runAsNonRoot is unset in the Pod SecurityContext, "
+                "it defaults to false which means it must be explicitly set to true in either the Container "
+                "SecurityContext or the Pod SecurityContext for the nonroot audit to pass.",
+                "Non Root - PSC UID 0",
+                df_run_as_user_psc_root,
+                writer
+            )
             self.hardened = False
-        except:
-            KeyError
+        except KeyError:
+            if self.verbosity > 1:
+                print(f'[{self.cyan_text("*")}] "Non Root - PSC UID 0" not detected')
 
     def privesc(self, df, writer):
         """Privilege escalation"""
-
         try:
             # Allow Privilege Escalation Nil
-            df_allow_privilege_escalation_nil = df[df['AuditResultName']
-                                                   == 'AllowPrivilegeEscalationNil']
+            df_allow_privilege_escalation_nil = df[df['AuditResultName'] == 'AllowPrivilegeEscalationNil']
             df_allow_privilege_escalation_nil = df_allow_privilege_escalation_nil[[
                 "ResourceNamespace", "ResourceKind", "ResourceName", "Container", "msg"]]
-            df_allow_privilege_escalation_nil.to_excel(
-                writer,
-                sheet_name="PrivilegeEscalation - Nil",
-                index=False,
-                freeze_panes=(1, 0))
+            df_allow_privilege_escalation_nil = df_allow_privilege_escalation_nil.rename(columns={
+                "ResourceNamespace": "Resource Namespace",
+                "ResourceKind": "Resource Kind",
+                "ResourceName": "Resource Name",
+                "Container": "Affected Container",
+                "msg": "Recommendation",
+            })
+            self.colour_cells_and_save_to_excel(
+                "Privilege Escalation - No Explicit Deny",
+                "allowPrivilegeEscalation controls whether a process can gain more privileges than its parent "
+                "process. Privilege escalation should always be explicitly denied by setting allowPrivilegeEscalation "
+                "to false in the container's SecurityContext.",
+                "PrivilegeEscalation - Nil",
+                df_allow_privilege_escalation_nil,
+                writer
+            )
             self.privesc_set = False
-        except:
-            KeyError
+        except KeyError:
+            if self.verbosity > 1:
+                print(f'[{self.cyan_text("*")}] "PrivilegeEscalation - Nil" not detected')
 
         try:
             # Allow Privilege Escalation True
-            df_allow_privilege_escalation_true = df[df['AuditResultName']
-                                                    == 'AllowPrivilegeEscalationTrue']
+            df_allow_privilege_escalation_true = df[df['AuditResultName'] == 'AllowPrivilegeEscalationTrue']
             df_allow_privilege_escalation_true = df_allow_privilege_escalation_true[[
                 "ResourceNamespace", "ResourceKind", "ResourceName", "Container", "msg"]]
-            df_allow_privilege_escalation_true.to_excel(
-                writer,
-                sheet_name="PrivilegeEscalation - True",
-                index=False,
-                freeze_panes=(1, 0))
+            df_allow_privilege_escalation_true = df_allow_privilege_escalation_true.rename(columns={
+                "ResourceNamespace": "Resource Namespace",
+                "ResourceKind": "Resource Kind",
+                "ResourceName": "Resource Name",
+                "Container": "Affected Container",
+                "msg": "Recommendation",
+            })
+            self.colour_cells_and_save_to_excel(
+                "Privilege Escalation - flag 'privilegeEscalation' set to True",
+                "allowPrivilegeEscalation controls whether a process can gain more privileges than its parent "
+                "process. Privilege escalation should always be explicitly denied by setting allowPrivilegeEscalation "
+                "to false in the container's SecurityContext.",
+                "PrivilegeEscalation - True",
+                df_allow_privilege_escalation_true,
+                writer
+            )
             self.privesc_set = False
-        except:
-            KeyError
+        except KeyError:
+            if self.verbosity > 1:
+                print(f'[{self.cyan_text("*")}] "PrivilegeEscalation - True" not detected')
 
     def privileged(self, df, writer):
         """Privileged"""
-
         try:
             # Privileged Nil
             df_privileged_nil = df[df['AuditResultName'] == 'PrivilegedNil']
             df_privileged_nil = df_privileged_nil[[
                 "ResourceNamespace", "ResourceKind", "ResourceName", "Container", "msg"]]
-            df_privileged_nil.to_excel(
-                writer,
-                sheet_name="Privileged - Nil",
-                index=False,
-                freeze_panes=(1, 0))
-            self.privileged_flag = True
+            df_privileged_nil = df_privileged_nil.rename(columns={
+                "ResourceNamespace": "Resource Namespace",
+                "ResourceKind": "Resource Kind",
+                "ResourceName": "Resource Name",
+                "Container": "Affected Container",
+                "msg": "Recommendation",
+            })
+            self.colour_cells_and_save_to_excel(
+                "Privileged flag not set to false in SecurityContext",
+                "Running a container as privileged gives all capabilities to the container, and it also lifts "
+                "all the limitations enforced by the device cgroup controller. In other words, the container can then "
+                "do almost everything that the host can do. This option exists to allow special use-cases, like running "
+                "Docker within Docker, but should not be used in most cases.",
+                "Privileged - Nil",
+                df_privileged_nil,
+                writer
+            )
             self.rbac_police = True
-        except:
-            KeyError
+            self.privileged_flag = True
+        except KeyError:
+            if self.verbosity > 1:
+                print(f'[{self.cyan_text("*")}] "Privileged - Nil" not detected')
 
         try:
             # Privileged True
             df_privileged_true = df[df['AuditResultName'] == 'PrivilegedTrue']
             df_privileged_true = df_privileged_true[[
                 "ResourceNamespace", "ResourceKind", "ResourceName", "Container", "msg"]]
-            df_privileged_true.to_excel(
-                writer,
-                sheet_name="Privileged - True",
-                index=False,
-                freeze_panes=(1, 0))
+            df_privileged_true = df_privileged_true.rename(columns={
+                "ResourceNamespace": "Resource Namespace",
+                "ResourceKind": "Resource Kind",
+                "ResourceName": "Resource Name",
+                "Container": "Affected Container",
+                "msg": "Recommendation",
+            })
+            self.colour_cells_and_save_to_excel(
+                "Privileged flag set to true in SecurityContext",
+                "Running a container as privileged gives all capabilities to the container, and it also lifts "
+                "all the limitations enforced by the device cgroup controller. In other words, the container can then "
+                "do almost everything that the host can do. This option exists to allow special use-cases, like running"
+                " Docker within Docker, but should not be used in most cases.",
+                "Privileged - True",
+                df_privileged_true,
+                writer
+            )
+            self.rbac_police = True
             self.privileged_flag = True
-        except:
-            KeyError
+        except KeyError:
+            if self.verbosity > 1:
+                print(f'[{self.cyan_text("*")}] "Privileged - True" not detected')
 
     def root_fs(self, df, writer):
         """Root filesystem"""
-
         try:
             # ReadOnlyRootFilesystem Nil
-            df_read_only_root_filesystem_nil = df[df['AuditResultName']
-                                                  == 'ReadOnlyRootFilesystemNil']
+            df_read_only_root_filesystem_nil = df[df['AuditResultName'] == 'ReadOnlyRootFilesystemNil']
             df_read_only_root_filesystem_nil = df_read_only_root_filesystem_nil[[
                 "ResourceNamespace", "ResourceKind", "ResourceName", "Container", "msg"]]
-            df_read_only_root_filesystem_nil.to_excel(
-                writer,
-                sheet_name="Root FileSystem - ReadOnly Nil",
-                index=False,
-                freeze_panes=(1, 0))
+            df_read_only_root_filesystem_nil = df_read_only_root_filesystem_nil.rename(columns={
+                "ResourceNamespace": "Resource Namespace",
+                "ResourceKind": "Resource Kind",
+                "ResourceName": "Resource Name",
+                "Container": "Affected Container",
+                "msg": "Recommendation",
+            })
+            self.colour_cells_and_save_to_excel(
+                "readOnlyRootFilesystem not set",
+                "If a container does not need to write files, it should be run with a read-only filesystem.",
+                "Root FileSystem - ReadOnly Nil",
+                df_read_only_root_filesystem_nil,
+                writer
+            )
             self.hardened = False
-        except:
-            KeyError
+        except KeyError:
+            if self.verbosity > 1:
+                print(f'[{self.cyan_text("*")}] "Root FileSystem - ReadOnly Nil" not detected')
 
     def seccomp(self, df, writer):
-        "Seccomp profile"
-
+        """Seccomp profile"""
         try:
             # Seccomp Profile Missing
-            df_seccomp_profile_missing = df[df['AuditResultName']
-                                            == 'SeccompProfileMissing']
+            df_seccomp_profile_missing = df[df['AuditResultName'] == 'SeccompProfileMissing']
             df_seccomp_profile_missing = df_seccomp_profile_missing[[
                 "ResourceNamespace", "ResourceKind", "ResourceName", "Container", "msg"]]
-            df_seccomp_profile_missing.to_excel(
-                writer,
-                sheet_name="Seccomp - Missing",
-                index=False,
-                freeze_panes=(1, 0))
+            df_seccomp_profile_missing = df_seccomp_profile_missing.rename(columns={
+                "ResourceNamespace": "Resource Namespace",
+                "ResourceKind": "Resource Kind",
+                "ResourceName": "Resource Name",
+                "Container": "Affected Container",
+                "msg": "Recommendation",
+            })
+            self.colour_cells_and_save_to_excel(
+                "Seccomp Profile Missing",
+                "Seccomp is enabled by adding a seccomp profile to the security context. The seccomp profile can "
+                "be either added to a pod security context, which enables seccomp for all containers within that pod, "
+                "or a security context, which enables seccomp only for that container.",
+                "Seccomp - Missing",
+                df_seccomp_profile_missing,
+                writer
+            )
             self.hardened = False
-        except:
-            KeyError
+        except KeyError:
+            if self.verbosity > 1:
+                print(f'[{self.cyan_text("*")}] "Seccomp - Missing" not detected')
 
     @staticmethod
     def show_status_bar(iteration, resource, count, start, size=50):
-        """Quick function to show a nice status bar to stderr"""
-
+        """Quick function to show a nice status bar to stdout"""
         x = int(size * iteration / count)
         if iteration != 0:
             remaining = ((time.time() - start) / iteration) * (count - iteration)
             mins, sec = divmod(remaining, 60)
-            time_str = f"{mins:02.0f}m {sec:.0f}s"
+            time_str = f"{mins:.0f}m {sec:02.0f}s"
         else:
             time_str = "N/A"
 
@@ -1403,7 +1568,7 @@ class Kubenumerate:
         # Create recovery file if it doesn't exist
         self.pkl_recovery = f"{self.out_path}.kubenumerate_trivy_log_lists.pkl"
         if not os.path.exists(self.pkl_recovery):
-            Path.touch(self.pkl_recovery, 0o644)  # TODO: convert str to Path?
+            Path.touch(self.pkl_recovery, 0o644)
 
         if self.verbosity > 1:
             print(
@@ -1421,6 +1586,7 @@ class Kubenumerate:
 
         # Main loop to go through all images
         for i, pod in enumerate(pods):
+            self.show_status_bar(i + 1, "pods", total_pods, start)
             # Check to see if this is a repeating test
             if iteration == total_pods - 1:
                 if self.verbosity > 0:
@@ -1461,30 +1627,33 @@ class Kubenumerate:
                                 print(f"Debug: {image_name} already checked. Skipping")
                             continue
 
-                        # Vuln image found duplicated, add pod info to vuln
-                        # list and skip it
+                        # Vuln image found duplicated, add pod info to vuln list and skip it
                         if already_found_vulns:
                             if self.verbosity > 1:
                                 print(f"Debug: {image_name} already_found_vulns")
                             try:
-                                previous_image = [img for img in vuln_containers if img[0] == image_name]
+                                previous_image = [img for img in vuln_containers if img[1] == image_name]
                                 new_image = [
+                                    namespace,
                                     image_name,
                                     pod_name,
                                     container_name,
-                                    previous_image[0][3],  # crits
-                                    previous_image[0][4],  # highs
-                                    namespace,
+                                    previous_image[0][4],   # crits
+                                    previous_image[0][5],   # crit CVEs
+                                    previous_image[0][6],   # highs
+                                    previous_image[0][7],   # high CVEs
                                 ]
                                 vuln_containers.append(new_image)
                                 continue
-                            except UnboundLocalError:
-                                # Getting UnboundLocalError when recovering from previous scan. Ignoring for now.
+                            except UnboundLocalError as e:
+                                # Getting UnboundLocalError when recovering from previous scan.
+                                if self.verbosity > 1:
+                                    print(f"Debug: UnboundLocalError when recovering from previous scan: {str(e)}")
                                 continue
 
                         # Proceed scanning the image
                         scanned_images.append(image_name)
-                        highs, crits = 0, 0
+                        highs, found_high_CVEs, crits, found_crit_CVEs = 0, [], 0, []
                         try:
                             if self.verbosity > 1:
                                 print(f"Scanning image {image_name}")
@@ -1493,11 +1662,12 @@ class Kubenumerate:
                                 continue
 
                             for result in vulnerabilities.get("Results", []):
-                                for vulnerability in result.get(
-                                        'Vulnerabilities', []):
+                                for vulnerability in result.get('Vulnerabilities', []):
                                     if "HIGH" in vulnerability.get('Severity'):
+                                        found_high_CVEs.append(vulnerability.get('VulnerabilityID'))
                                         highs += 1
                                     if "CRITICAL" in vulnerability.get('Severity'):
+                                        found_crit_CVEs.append(vulnerability.get('VulnerabilityID'))
                                         crits += 1
 
                             if highs > 0 or crits > 0:
@@ -1505,17 +1675,19 @@ class Kubenumerate:
                                     print("Vuln image detected:", image_name)
                                 vuln_images.append(image_name)
                                 new_image = [
+                                    namespace,
                                     image_name,
                                     pod_name,
                                     container_name,
                                     crits,
+                                    found_crit_CVEs,
                                     highs,
-                                    namespace,
+                                    found_high_CVEs,
                                 ]
                                 vuln_containers.append(new_image)
                         except subprocess.CalledProcessError as e:
                             if self.verbosity > 1:
-                                print(f"Error scanning trivy: {str(e)}")
+                                print(f"Error scanning with Trivy: {str(e)}")
                         except KeyError as e:
                             if self.verbosity > 1:
                                 print("Key error:", str(e))
@@ -1531,30 +1703,31 @@ class Kubenumerate:
             except KeyError as e:
                 if self.verbosity > 1:
                     print("Key error:", e)
-            self.show_status_bar(i + 1, "pods", total_pods, start)
 
         # Flush the terminal stream
         print("\n", flush=True, file=sys.stdout)
-
-        if self.verbosity > 1:
-            print("DEBUG: vuln_images:", vuln_containers)
 
         if len(vuln_containers) != 0:
             self.vuln_image = True
             df = pd.DataFrame(vuln_containers)
             df.columns = [
-                "Image",
-                "Pod",
-                "Container",
-                "CRIT",
-                "HIGH",
-                "Namespace"]
-            df.sort_values(by='Image', ascending=True, inplace=True)
-            df.to_excel(
-                writer,
-                sheet_name="Vulnerable Images",
-                index=False,
-                freeze_panes=(1, 0))
+                "Namespace",
+                "Image Name",
+                "Pod Name",
+                "Affected Container",
+                "CRITS",
+                # TODO: edit this tab to present the CVEs in a better way? Currently it's VERY ugly
+                "CRIT CVEs affecting image",
+                "HIGHS",
+                "HIGH CVEs affecting image"]
+            self.colour_cells_and_save_to_excel(
+                "Images with Vulnerable Tags being used",
+                "Scanners picked up containers being affected by High and Critical well-known vulnerabilities. "
+                "These images' tags should be upgraded as soon as possible",
+                "Vulnerable Images",
+                df,
+                writer
+            )
         else:
             print(f'{self.green_text("[+]")} No images found containing any high- or critical-risk issues')
 
@@ -1610,17 +1783,11 @@ class Kubenumerate:
         worksheet.set_column(0, len(df.columns) - 1, 20)
         header_format = workbook.add_format({
             'font_name': 'Calibri', 'bg_color': '#A93545', 'bold': True, 'font_color': 'white', 'align': 'left'})
-        # title = "AppArmor Disabled"
-        # title = "Capabilities - Added"
-        # merge cells
         title_format = workbook.add_format({
             'font_name': 'Calibri', 'bg_color': '#A93545', 'font_color': 'white','font_size': 20})
         bg_format1 = workbook.add_format({'bg_color': '#E2E2E2'})
         bg_format2 = workbook.add_format({'bg_color': 'white'})
 
-        # subtitle = "Capabilities (specifically, Linux capabilities), are used for permission management in Linux. Some capabilities are enabled by default."
-        # subtitle = "AppArmor is enabled by adding container.apparmor.security.beta.kubernetes.io/[container name] as a pod-level annotation and setting its value to either runtime/default or a profile (localhost/[profile name])."
-        # note down how many cells title and subheader require
         worksheet.merge_range('A1:AC1', title, title_format)
         worksheet.merge_range('A2:AC2', subtitle)
         worksheet.set_row(2, 15)  # row height 15
@@ -1635,7 +1802,7 @@ class Kubenumerate:
                 continue
             worksheet.set_row(row, cell_format=(bg_format1 if row % 2 == 0 else bg_format2))
 
-        df.to_excel(writer, index=False, sheet_name="Capabilities - Added", startrow=3, header=False)
+        df.to_excel(writer, index=False, sheet_name=sheet_name, startrow=3, header=False)
 
     def print_banner(self):
         banner = ("\n"
