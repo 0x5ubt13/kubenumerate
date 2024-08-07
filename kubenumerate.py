@@ -13,8 +13,6 @@ import subprocess
 import sys
 import time
 import yaml
-from xlsxwriter.exceptions import DuplicateWorksheetName
-
 
 class Kubenumerate:
     """ A class to automatically launch and parse several Kubernetes security auditing tools, by Subtle
@@ -25,15 +23,15 @@ class Kubenumerate:
                  depr_api=False, dry_run=False, excel_file="kubenumerate_results_v1_0.xlsx", hardened=True,
                  inst_kubeaudit=False, inst_kubebench=False, inst_kubectl=False, inst_trivy=False, install=False,
                  kubeaudit_bin="kubeaudit", kubeaudit_file="", kube_bench_bin="kube-bench", kube_bench_file="",
-                 kubectl_bin="kubectl", kubectl_path="/tmp/kubenumerate_out/kubectl_output/", kube_version="v1.30.0",
+                 kubeconfig_path=os.path.expanduser('~/.kube/config'),
+                 kubectl_bin="kubectl", kubectl_path="/tmp/kubenumerate_out/kubectl_output/", kube_version="v1.30.2",
                  limits=True, namespace="-A", out_path="/tmp/kubenumerate_out/", pkl_recovery="", pods="", pods_file="",
                  privesc=False, privileged=False, rbac_police=False, requisites=None, trivy_bin="trivy", trivy_file="",
-                 verbosity=1, version="1.0.10", version_diff=0, vuln_image=False):
+                 verbosity=1, version="1.1.0", version_diff=0, vuln_image=False):
         """Initialize attributes"""
 
         if requisites is None:
             requisites = []
-        user = os.environ.get('USER', 'subtle')
         self.args = args
         self.automount = automount
         self.cis_detected = cis
@@ -52,7 +50,7 @@ class Kubenumerate:
         self.kubeaudit_file = kubeaudit_file
         self.kube_bench_bin = kube_bench_bin
         self.kube_bench_file = kube_bench_file
-        self.kubeconfig_path = f"/home/{user}/.kube/config"
+        self.kubeconfig_path = kubeconfig_path
         self.kubectl_bin = kubectl_bin
         self.kubectl_path = kubectl_path
         self.kube_version = kube_version  # TODO: Implement automatic check to fetch latest kube io release?
@@ -1805,15 +1803,26 @@ class Kubenumerate:
         df.to_excel(writer, index=False, sheet_name=sheet_name, startrow=3, header=False)
 
     def print_banner(self):
-        banner = ("\n"
-                  "__  __         __                                                 __         \n"
-                  "|  |/  |.--.--.|  |--.-----.-----.--.--.--------.-----.----.---.-.|  |_.-----.\n"
-                  "|     < |  |  ||  _  |  -__|     |  |  |        |  -__|   _|  _  ||   _|  -__|\n"
-                  "|__|\__||_____||_____|_____|__|__|_____|__|__|__|_____|__| |___._||____|_____|\n"
-                  "        ")
+        # banner = ("\n"
+        #           "__  __         __                                                 __         \n"
+        #           "|  |/  |.--.--.|  |--.-----.-----.--.--.--------.-----.----.---.-.|  |_.-----.\n"
+        #           "|     < |  |  ||  _  |  -__|     |  |  |        |  -__|   _|  _  ||   _|  -__|\n"
+        #           "|__|\__||_____||_____|_____|__|__|_____|__|__|__|_____|__| |___._||____|_____|\n"
+        #           "        ")
+        # print(
+        #     f'{self.cyan_text(banner)}\n{self.yellow_text(f"v{self.version}")}                                         '
+        #     f'                    {self.green_text("By 0x5ubt13")}\n')
+        banner = (f"""
+           {self.cyan_text('  +-----+')}{self.red_text('  1. -----')}
+           {self.cyan_text(' /     /|')}{self.red_text('  2. -----')}
+           {self.cyan_text('+-----+ |')}{self.yellow_text('  3. -----')}
+           {self.cyan_text('|     | +')}{self.yellow_text('  4. -----')}
+           {self.cyan_text('|     |/')}{self.green_text('  5. -----')}
+           {self.cyan_text('+-----+')}{self.green_text('  6. -----')}""")
         print(
-            f'{self.cyan_text(banner)}\n{self.yellow_text(f"v{self.version}")}                                         '
-            f'                    {self.green_text("By 0x5ubt13")}\n')
+            f'{self.cyan_text(banner)}\n'
+            f'\t     Kubenumerate\n' 
+            f'\t  {self.green_text("By 0x5ubt13")} {self.yellow_text(f"v{self.version}")}\n')
 
 
 def main():
