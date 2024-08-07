@@ -13,6 +13,8 @@ import subprocess
 import sys
 import time
 import yaml
+from xlsxwriter.exceptions import DuplicateWorksheetName
+
 
 class Kubenumerate:
     """ A class to automatically launch and parse several Kubernetes security auditing tools, by Subtle
@@ -23,8 +25,7 @@ class Kubenumerate:
                  depr_api=False, dry_run=False, excel_file="kubenumerate_results_v1_0.xlsx", hardened=True,
                  inst_kubeaudit=False, inst_kubebench=False, inst_kubectl=False, inst_trivy=False, install=False,
                  kubeaudit_bin="kubeaudit", kubeaudit_file="", kube_bench_bin="kube-bench", kube_bench_file="",
-                 kubeconfig_path=os.path.expanduser('~/.kube/config'),
-                 kubectl_bin="kubectl", kubectl_path="/tmp/kubenumerate_out/kubectl_output/", kube_version="v1.30.2",
+                 kubectl_bin="kubectl", kubectl_path="/tmp/kubenumerate_out/kubectl_output/", kube_version="v1.30.3",
                  limits=True, namespace="-A", out_path="/tmp/kubenumerate_out/", pkl_recovery="", pods="", pods_file="",
                  privesc=False, privileged=False, rbac_police=False, requisites=None, trivy_bin="trivy", trivy_file="",
                  verbosity=1, version="1.1.0", version_diff=0, vuln_image=False):
@@ -32,6 +33,7 @@ class Kubenumerate:
 
         if requisites is None:
             requisites = []
+        user = os.environ.get('USER', 'subtle')
         self.args = args
         self.automount = automount
         self.cis_detected = cis
@@ -50,7 +52,7 @@ class Kubenumerate:
         self.kubeaudit_file = kubeaudit_file
         self.kube_bench_bin = kube_bench_bin
         self.kube_bench_file = kube_bench_file
-        self.kubeconfig_path = kubeconfig_path
+        self.kubeconfig_path = f"/home/{user}/.kube/config"
         self.kubectl_bin = kubectl_bin
         self.kubectl_path = kubectl_path
         self.kube_version = kube_version  # TODO: Implement automatic check to fetch latest kube io release?
@@ -257,17 +259,20 @@ class Kubenumerate:
                 print(f'{self.red_text("[-]")} Error whilst installing brew: {e}')
                 sys.exit(1)
         elif tool == "kube-bench":
-            # TODO: Add check to get latest available version and automate it
-            subprocess.run(
-                "mkdir /tmp/kube-bench; curl -kLo /tmp/kube-bench/kube-bench_0.7.3_linux_amd64.tar.gz "
-                "https://github.com/aquasecurity/kube-bench/releases/download/v0.7.3/kube-bench_0.7.3_linux_amd64.tar"
-                ".gz",
-                shell=True, executable=shell)
-            subprocess.run("cd /tmp/kube-bench; tar -xvf /tmp/kube-bench/kube-bench_0.7.3_linux_amd64.tar.gz",
-                           shell=True, executable=shell)
-            subprocess.run(
-                "chmod +x /tmp/kube-bench/kube-bench; ln -s /tmp/kube-bench/kube-bench /usr/local/bin/kube-bench",
-                shell=True, executable=shell)
+            try:
+                subprocess.run(
+                    "mkdir /tmp/kube-bench/; curl -s https://api.github.com/repos/aquasecurity/kube-bench/releases/latest | "
+                    "jq -r '.assets[] | select(.name | test(\"linux_amd64.tar.gz\")) | .browser_download_url' | "
+                    "wget -i - -P /tmp/kube-bench/",
+                    shell=True, executable=shell)
+                subprocess.run("cd /tmp/kube-bench; tar -xvf /tmp/kube-bench/kube-bench*",
+                               shell=True, executable=shell)
+                subprocess.run(
+                    "chmod +x /tmp/kube-bench/kube-bench; ln -s /tmp/kube-bench/kube-bench /usr/local/bin/kube-bench",
+                    shell=True, executable=shell)
+            except Exception as e:
+                print(f'{self.red_text("[-]")} Error whilst installing kube-bench: {e}')
+                sys.exit(1)
         else:
             try:
                 subprocess.run(f"/home/linuxbrew/.linuxbrew/bin/brew install {tool}", shell=True, executable=shell)
@@ -667,6 +672,35 @@ class Kubenumerate:
 
         if self.verbosity >= 0:
             print(f'{self.green_text("[+]")} Done! All output successfully saved to {self.cyan_text(self.excel_file)}')
+
+        # Run ExtensiveRoleCheck.py
+        print('Extra: including ExtensiveRoleCheck.py to Kubenumerate (dev branch only)')
+        # TODO: embed this better in the Kubenumerate class
+        role_check_out_path = f'{self.out_path}ExtensiveRoleCheck_output.txt'
+        extensive_role_check_file_path = 'ExtensiveRoleCheck.py'
+        try:
+            Path.touch(role_check_out_path, 0o644)
+            # python3 ExtensiveRoleCheck.py
+            command = (f"python3 {extensive_role_check_file_path}"
+                       f" --clusterRole {self.kubectl_path}clusterroles.json"
+                       f" --role {self.kubectl_path}roles.json"
+                       f" --rolebindings {self.kubectl_path}rolebindings.json"
+                       f" --clusterrolebindings {self.kubectl_path}clusterrolebindings.json"
+                       f" --pods {self.kubectl_path}pods.json").split(" ")
+            process = subprocess.Popen(
+                command,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE)
+            stdout, stderr = process.communicate()
+
+            # Save the output to its own file
+            with open(f'{role_check_out_path}', "w") as f:
+                f.write(stdout.decode("utf-8"))
+                print(f'{self.green_text("[+]")} Done! ExtensiveRoleCheck.py output successfully saved to '
+                      f'{role_check_out_path}')
+        except Exception as e:
+            print(
+                f'{self.red_text("[-]")} Error detected while launching `python3 ExtensiveRoleCheck.py`: {e}')
 
         # Finish by raising issues to the terminal
         self.raise_issues()
@@ -1803,26 +1837,15 @@ class Kubenumerate:
         df.to_excel(writer, index=False, sheet_name=sheet_name, startrow=3, header=False)
 
     def print_banner(self):
-        # banner = ("\n"
-        #           "__  __         __                                                 __         \n"
-        #           "|  |/  |.--.--.|  |--.-----.-----.--.--.--------.-----.----.---.-.|  |_.-----.\n"
-        #           "|     < |  |  ||  _  |  -__|     |  |  |        |  -__|   _|  _  ||   _|  -__|\n"
-        #           "|__|\__||_____||_____|_____|__|__|_____|__|__|__|_____|__| |___._||____|_____|\n"
-        #           "        ")
-        # print(
-        #     f'{self.cyan_text(banner)}\n{self.yellow_text(f"v{self.version}")}                                         '
-        #     f'                    {self.green_text("By 0x5ubt13")}\n')
-        banner = (f"""
-           {self.cyan_text('  +-----+')}{self.red_text('  1. -----')}
-           {self.cyan_text(' /     /|')}{self.red_text('  2. -----')}
-           {self.cyan_text('+-----+ |')}{self.yellow_text('  3. -----')}
-           {self.cyan_text('|     | +')}{self.yellow_text('  4. -----')}
-           {self.cyan_text('|     |/')}{self.green_text('  5. -----')}
-           {self.cyan_text('+-----+')}{self.green_text('  6. -----')}""")
+        banner = ("\n"
+                  "__  __         __                                                 __         \n"
+                  "|  |/  |.--.--.|  |--.-----.-----.--.--.--------.-----.----.---.-.|  |_.-----.\n"
+                  "|     < |  |  ||  _  |  -__|     |  |  |        |  -__|   _|  _  ||   _|  -__|\n"
+                  "|__|\__||_____||_____|_____|__|__|_____|__|__|__|_____|__| |___._||____|_____|\n"
+                  "        ")
         print(
-            f'{self.cyan_text(banner)}\n'
-            f'\t     Kubenumerate\n' 
-            f'\t  {self.green_text("By 0x5ubt13")} {self.yellow_text(f"v{self.version}")}\n')
+            f'{self.cyan_text(banner)}\n{self.yellow_text(f"v{self.version}")}                                         '
+            f'                    {self.green_text("By 0x5ubt13")}\n')
 
 
 def main():

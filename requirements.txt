@@ -4,3 +4,4 @@ pyarrow
 xlsxwriter
 pyyaml
 packaging~=24.0
+colorama
