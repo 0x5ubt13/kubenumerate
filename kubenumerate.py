@@ -676,6 +676,7 @@ class Kubenumerate:
         # Run ExtensiveRoleCheck.py
         print('Extra: including ExtensiveRoleCheck.py to Kubenumerate (dev branch only)')
         # TODO: embed this better in the Kubenumerate class
+        # TODO: get output in JSON and parse to flag RBAC in self.raise_issues()
         role_check_out_path = f'{self.out_path}ExtensiveRoleCheck_output.txt'
         extensive_role_check_file_path = 'ExtensiveRoleCheck.py'
         try:
