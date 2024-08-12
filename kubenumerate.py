@@ -703,6 +703,8 @@ class Kubenumerate:
             print(
                 f'{self.red_text("[-]")} Error detected while launching `python3 ExtensiveRoleCheck.py`: {e}')
 
+        # TODO: Create parsing function
+        self.parse_ExtensiveRoleCheck()
         # Finish by raising issues to the terminal
         self.raise_issues()
 
