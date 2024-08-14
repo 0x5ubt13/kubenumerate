@@ -11,6 +11,7 @@ import pickle
 import shutil
 import subprocess
 import sys
+import re
 import time
 import yaml
 from xlsxwriter.exceptions import DuplicateWorksheetName
@@ -23,12 +24,13 @@ class Kubenumerate:
 
     def __init__(self, args="", automount=False, cis=False, cluster_version="", date=datetime.now().strftime("%b%y"),
                  depr_api=False, dry_run=False, excel_file="kubenumerate_results_v1_0.xlsx", hardened=True,
-                 inst_kubeaudit=False, inst_kubebench=False, inst_kubectl=False, inst_trivy=False, install=False,
-                 kubeaudit_bin="kubeaudit", kubeaudit_file="", kube_bench_bin="kube-bench", kube_bench_file="",
-                 kubectl_bin="kubectl", kubectl_path="/tmp/kubenumerate_out/kubectl_output/", kube_version="v1.30.3",
-                 limits=True, namespace="-A", out_path="/tmp/kubenumerate_out/", pkl_recovery="", pods="", pods_file="",
-                 privesc=False, privileged=False, rbac_police=False, requisites=None, trivy_bin="trivy", trivy_file="",
-                 verbosity=1, version="1.1.0", version_diff=0, vuln_image=False):
+                 inst_jq=False, inst_kubeaudit=False, inst_kubebench=False, inst_kubectl=False, inst_trivy=False,
+                 install=False, kubeaudit_bin="kubeaudit", kubeaudit_file="", kube_bench_bin="kube-bench",
+                 kube_bench_file="", kubectl_bin="kubectl", kubectl_path="/tmp/kubenumerate_out/kubectl_output/",
+                 kube_version="v1.30.3", limits=True, namespace="-A", out_path="/tmp/kubenumerate_out/",
+                 pkl_recovery="", pods="", pods_file="", privesc=False, privileged=False, rbac_police=False,
+                 requisites=None, trivy_bin="trivy", trivy_file="", verbosity=1, version="1.1.0", version_diff=0,
+                 vuln_image=False):
         """Initialize attributes"""
 
         if requisites is None:
@@ -43,6 +45,7 @@ class Kubenumerate:
         self.dry_run = dry_run
         self.excel_file = excel_file
         self.hardened = hardened
+        self.inst_jq = inst_jq
         self.inst_kubeaudit = inst_kubeaudit
         self.inst_kubebench = inst_kubebench
         self.inst_kubectl = inst_kubectl
@@ -157,6 +160,13 @@ class Kubenumerate:
 
         self.ask_for_permission()
 
+        if self.inst_jq:
+            if not self.install:
+                print(f'{self.red_text("[-]")} Please install jq: https://github.com/jqlang/jq')
+            else:
+                if self.inst_kubeaudit:
+                    if not os.path.isfile('/home/linuxbrew/.linuxbrew/bin/jq'):
+                        self.install_tool("jq")
         if self.inst_kubeaudit:
             if not self.install:
                 print(f'{self.red_text("[-]")} Please install kubeaudit: https://github.com/Shopify/kubeaudit')
@@ -164,7 +174,7 @@ class Kubenumerate:
                 if self.inst_kubeaudit:
                     if not os.path.isfile('/home/linuxbrew/.linuxbrew/bin/kubeaudit'):
                         self.install_tool("kubeaudit")
-        if not shutil.which("kube-bench"):
+        if not os.path.isfile('/tmp/kube-bench/kube-bench'):
             self.inst_kubebench = True
             if not self.install:
                 print(f'{self.red_text("[-]")} Please install kube-bench: https://github.com/aquasecurity/kube-bench')
@@ -202,7 +212,9 @@ class Kubenumerate:
 
         print(f'{self.cyan_text("[*]")} The following tools are needed:')
         for tool in self.requisites:
-            if tool == "kubeaudit":
+            if tool == "jq":
+                self.inst_jq = True
+            elif tool == "kubeaudit":
                 self.inst_kubeaudit = True
             elif tool == "kube-bench":
                 self.inst_kubebench = True
@@ -261,7 +273,8 @@ class Kubenumerate:
         elif tool == "kube-bench":
             try:
                 subprocess.run(
-                    "mkdir /tmp/kube-bench/; curl -s https://api.github.com/repos/aquasecurity/kube-bench/releases/latest | "
+                    "mkdir /tmp/kube-bench/; "
+                    "curl -s https://api.github.com/repos/aquasecurity/kube-bench/releases/latest | "
                     "jq -r '.assets[] | select(.name | test(\"linux_amd64.tar.gz\")) | .browser_download_url' | "
                     "wget -i - -P /tmp/kube-bench/",
                     shell=True, executable=shell)
@@ -418,10 +431,6 @@ class Kubenumerate:
         # Gather all other possible kubectl output in case access to the cluster is lost
         self.kubectl_get_all_yaml_and_json()
 
-        # Version check to suggest the cluster's version is outdated
-        if Version(self.cluster_version) < Version(self.kube_version):
-            self.version_diff = int(self.kube_version.split(".")[1]) - int(self.cluster_version.split(".")[1])
-
         if self.verbosity > 0:
             print(f'{self.green_text("[+]")} Done. All kubectl output saved to {self.cyan_text(self.out_path)}')
 
@@ -457,12 +466,12 @@ class Kubenumerate:
                 stderr=subprocess.PIPE)
             cluster_version_stdout, cluster_version_stderr = cluster_version_process.communicate()
 
-            self.cluster_version = cluster_version_stdout.decode("UTF-8").split(" ")[-1].replace("v", "")
+            self.cluster_version = self.extract_version(cluster_version_stdout.decode("UTF-8").split(" ")[-1])
             with open(f'{self.kubectl_path}cluster_version.txt', "w") as f:
                 f.write(self.cluster_version)
 
         except Exception as e:
-            self.cluster_version = ""
+            self.cluster_version = None
             print(f'{self.red_text("[-]")} Error detected while launching `kubectl version`: {e}')
 
         # Get all yaml and json about valid resources
@@ -623,6 +632,9 @@ class Kubenumerate:
             print(f'\n{self.cyan_text("[*]")} ----- Running kubectl, kubeaudit and kube-bench -----')
         self.launch_gatherer_tools()
 
+        # Check versions difference
+        self.kubernetes_version_check()
+
         # Write to Excel file all findings
         if self.verbosity > 0:
             print(
@@ -674,7 +686,7 @@ class Kubenumerate:
             print(f'{self.green_text("[+]")} Done! All output successfully saved to {self.cyan_text(self.excel_file)}')
 
         # Run ExtensiveRoleCheck.py
-        print('Extra: including ExtensiveRoleCheck.py to Kubenumerate (dev branch only)')
+        print(f'{self.cyan_text("[*]")} Extra: including ExtensiveRoleCheck.py to Kubenumerate (dev branch only)')
         # TODO: embed this better in the Kubenumerate class
         # TODO: get output in JSON and parse to flag RBAC in self.raise_issues()
         role_check_out_path = f'{self.out_path}ExtensiveRoleCheck_output.txt'
@@ -694,9 +706,18 @@ class Kubenumerate:
                 stderr=subprocess.PIPE)
             stdout, stderr = process.communicate()
 
+            # TODO: parse error output and print what is the exact cause
+            # TODO: check that all mentioned files are bigger than 0, otherwise flag to user
+            if len(stderr) > 0:
+                print(f'{self.red_text("[-]")} Error while running ExtensiveRoleCheck.py: {stderr.decode("utf-8")}')
+                print(f'{self.cyan_text("[*]")} Ensure all files that the script reads are sane. '
+                      f'Perhaps your role does not have enough permissions to get Roles, RoleBindings, ClusterRoles, '
+                      f'ClusterRoleBindings, or Pods')
+
             # Save the output to its own file
             with open(f'{role_check_out_path}', "w") as f:
                 f.write(stdout.decode("utf-8"))
+                f.write(stderr.decode("utf-8"))
                 print(f'{self.green_text("[+]")} Done! ExtensiveRoleCheck.py output successfully saved to '
                       f'{role_check_out_path}')
         except Exception as e:
@@ -704,9 +725,65 @@ class Kubenumerate:
                 f'{self.red_text("[-]")} Error detected while launching `python3 ExtensiveRoleCheck.py`: {e}')
 
         # TODO: Create parsing function
-        self.parse_ExtensiveRoleCheck()
+        # self.parse_ExtensiveRoleCheck()
+
         # Finish by raising issues to the terminal
         self.raise_issues()
+
+    def kubernetes_version_check(self):
+        """Fetch latest version to suggest whether the cluster's version is outdated"""
+        if not self.cluster_version:
+            print(f'{self.red_text("[-]")} Skipping version check as kubectl could not fetch cluster\'s version')
+            return
+
+        current_latest = self.fetch_latest_kubernetes_version()
+        if not current_latest:
+            print(f'{self.red_text("[-]")} Error detected while running curl trying to fetch kubernetes last version: '
+                  f'{e}')
+            print(f'{self.red_text("[-]")} This will now default to a hard-coded version (v{self.kube_version}). '
+                  f'Although the developer tries to maintain Kubenumerate updated, you should ensure this version is '
+                  f'up-to-date, otherwise you might flag a false positive.')
+        else:
+            self.kube_version = current_latest
+
+        if Version(self.cluster_version) < Version(self.kube_version):
+            self.version_diff = int(self.kube_version.split(".")[1]) - int(self.cluster_version.split(".")[1])
+
+    @staticmethod
+    def fetch_latest_kubernetes_version():
+        try:
+            command = ("curl -s https://api.github.com/repos/kubernetes/kubernetes/releases/latest | "
+                       "jq -r .tag_name | "
+                       "sed 's/v//'").split(" ")
+            process = subprocess.Popen(
+                command,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE)
+            stdout, stderr = process.communicate()
+
+            if len(stderr) > 0:
+                print(f'{self.red_text("[-]")} Error while running curl trying to fetch kubernetes last version: '
+                      f'{stderr.decode("utf-8")}')
+                print(f'{self.red_text("[-]")} This will now default to a hard-coded version (v{self.kube_version}). '
+                      f'Although the developer tries to maintain Kubenumerate updated, you should ensure this version is '
+                      f'up-to-date, otherwise you might flag a false positive.')
+                return None
+
+            return latest_version
+
+        except Exception as e:
+            return None
+
+    @staticmethod
+    def extract_version(text):
+        """Get cluster's version even in case it's a weird string like 1.28.11-eks-ae83b80"""
+        pattern = r'v?(\d+\.\d+\.\d+)'
+        match = re.search(pattern, text)
+        if match:
+            return match.group(1)
+
+        print(f"Error: version not found in string {text}")
+        return None
 
     # Colour the terminal!
     @staticmethod
@@ -1805,6 +1882,7 @@ class Kubenumerate:
             print(f'\t{self.red_text("[!]")} CPU usage')
 
         # Suggest using RBAC Police (implementing this in the future)
+        # TODO: change this with extensiveRoleCheck.py's parsed output
         if self.rbac_police:
             print(
                 f'{self.yellow_text("[!]")} Running RBAC Police next might be interesting...\n\t('
@@ -1840,15 +1918,17 @@ class Kubenumerate:
         df.to_excel(writer, index=False, sheet_name=sheet_name, startrow=3, header=False)
 
     def print_banner(self):
-        banner = ("\n"
-                  "__  __         __                                                 __         \n"
-                  "|  |/  |.--.--.|  |--.-----.-----.--.--.--------.-----.----.---.-.|  |_.-----.\n"
-                  "|     < |  |  ||  _  |  -__|     |  |  |        |  -__|   _|  _  ||   _|  -__|\n"
-                  "|__|\__||_____||_____|_____|__|__|_____|__|__|__|_____|__| |___._||____|_____|\n"
-                  "        ")
+        banner = (f"""
+           {self.cyan_text('  +-----+')}{self.red_text('  1. -----')}
+           {self.cyan_text(' /     /|')}{self.red_text('  2. -----')}
+           {self.cyan_text('+-----+ |')}{self.yellow_text('  3. -----')}
+           {self.cyan_text('|     | +')}{self.yellow_text('  4. -----')}
+           {self.cyan_text('|     |/')}{self.green_text('  5. -----')}
+           {self.cyan_text('+-----+')}{self.green_text('  6. -----')}""")
         print(
-            f'{self.cyan_text(banner)}\n{self.yellow_text(f"v{self.version}")}                                         '
-            f'                    {self.green_text("By 0x5ubt13")}\n')
+            f'{self.cyan_text(banner)}\n'
+            f'\t     Kubenumerate\n' 
+            f'\t  {self.green_text("By 0x5ubt13")} {self.yellow_text(f"v{self.version}")}\n')
 
 
 def main():
