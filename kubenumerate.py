@@ -693,13 +693,24 @@ class Kubenumerate:
         extensive_role_check_file_path = 'ExtensiveRoleCheck.py'
         try:
             Path.touch(role_check_out_path, 0o644)
+            command = ""
             # python3 ExtensiveRoleCheck.py
-            command = (f"python3 {extensive_role_check_file_path}"
-                       f" --clusterRole {self.kubectl_path}clusterroles.json"
-                       f" --role {self.kubectl_path}roles.json"
-                       f" --rolebindings {self.kubectl_path}rolebindings.json"
-                       f" --clusterrolebindings {self.kubectl_path}clusterrolebindings.json"
-                       f" --pods {self.kubectl_path}pods.json").split(" ")
+            if self.dry_run:
+                print(f'{self.cyan_text("[*]")} --dry-run flag detected. Using current directory to fetch json files '
+                      'needed to run ExtensiveRoleCheck.py.')
+                command = (f"python3 {extensive_role_check_file_path}"
+                           f" --clusterRole clusterroles.json"
+                           f" --role roles.json"
+                           f" --rolebindings rolebindings.json"
+                           f" --clusterrolebindings clusterrolebindings.json"
+                           f" --pods pods.json").split(" ")
+            else:
+                command = (f"python3 {extensive_role_check_file_path}"
+                           f" --clusterRole {self.kubectl_path}clusterroles.json"
+                           f" --role {self.kubectl_path}roles.json"
+                           f" --rolebindings {self.kubectl_path}rolebindings.json"
+                           f" --clusterrolebindings {self.kubectl_path}clusterrolebindings.json"
+                           f" --pods {self.kubectl_path}pods.json").split(" ")
             process = subprocess.Popen(
                 command,
                 stdout=subprocess.PIPE,
@@ -1140,7 +1151,6 @@ class Kubenumerate:
         except KeyError:
             if self.verbosity > 1:
                 print(f'[{self.cyan_text("*")}] "Deprecated API Used')
-
 
     def host_ns(self, df, writer):
         """Host namespace"""
