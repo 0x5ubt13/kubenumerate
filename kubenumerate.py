@@ -324,7 +324,13 @@ class Kubenumerate:
 
         # Use pods file passed for trivy
         if self.args.trivy_file is not None:
-            self.trivy_file = f"{os.getcwd()}/{self.args.trivy_file}"
+            if os.path.exists(self.args.trivy_file):
+                self.trivy_file = f"{self.args.trivy_file}"
+            else:
+                if os.path.exists(f"{os.getcwd()}/{self.args.trivy_file}"):
+                    self.trivy_file = f"{os.getcwd()}/{self.args.trivy_file}"
+                else:
+                    print(f'{self.red_text("[-]")} Trivy file not found')
             if os.path.exists(self.trivy_file):
                 if self.verbosity > 0:
                     print(
