@@ -3,6 +3,7 @@ import argparse
 import logging
 from colorama import init, Fore, Back, Style
 
+
 def str2bool(v):
     if isinstance(v, bool):
         return v
@@ -13,21 +14,24 @@ def str2bool(v):
     else:
         raise argparse.ArgumentTypeError('Boolean value expected.')
 
+
 def get_argument_parser():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--clusterRole', type=str, required=False, help='ClusterRoles JSON file',)
+    parser.add_argument('--clusterRole', type=str, required=False, help='ClusterRoles JSON file', )
     parser.add_argument('--role', type=str, required=False, help='roles JSON file')
     parser.add_argument('--rolebindings', type=str, required=False, help='RoleBindings JSON file')
     parser.add_argument('--clusterrolebindings', type=str, required=False, help='ClusterRoleBindings JSON file')
     parser.add_argument('--pods', type=str, required=False, help='pods JSON file')
-    parser.add_argument('--outputjson', type=str2bool, nargs='?', const=True, default=False,
+    parser.add_argument('--outputjson', default=f"/tmp/kubenumerate_out/rbac_check_out",
                         help='Produce json files with audit report')
     return parser.parse_args()
+
 
 # Read data from files
 def open_file(file_path):
     with open(file_path) as f:
         return json.load(f)
+
 
 class ExtensiveRolesChecker(object):
     def __init__(self, json_file, role_kind):
@@ -64,7 +68,7 @@ class ExtensiveRolesChecker(object):
                 if not rule.get('resources', None):
                     continue
                 self.get_read_secrets(rule, role_name)
-                self.get_read_configmaps(rule,role_name)
+                self.get_read_configmaps(rule, role_name)
                 self.clusteradmin_role(rule, role_name)
                 self.any_resources(rule, role_name)
                 self.any_verb(rule, role_name)
@@ -76,18 +80,16 @@ class ExtensiveRolesChecker(object):
 
     #Read cluster secrets:
     def get_read_secrets(self, rule, role_name):
-        verbs = ['*','get','list']
+        verbs = ['*', 'get', 'list']
         if ('secrets' in rule['resources'] and any([sign for sign in verbs if sign in rule['verbs']])):
             filtered_name = self.get_non_default_name(role_name)
             if filtered_name:
                 self._role.warning(f'{Fore.GREEN}{filtered_name}' + f'{Fore.RED} Has permission to list secrets!')
                 self.add_result(filtered_name, 'Has permission to list secrets!')
 
-
-
     # Read configmaps, devs store creds in configmaps all the time
     def get_read_configmaps(self, rule, role_name):
-        verbs = ['*','get','list']
+        verbs = ['*', 'get', 'list']
         if ('configmaps' in rule['resources'] and any([sign for sign in verbs if sign in rule['verbs']])):
             filtered_name = self.get_non_default_name(role_name)
             if filtered_name:
@@ -99,51 +101,54 @@ class ExtensiveRolesChecker(object):
         if ('*' in rule['resources'] and '*' in rule['verbs']):
             filtered_name = self.get_non_default_name(role_name)
             if filtered_name:
-                self._role.warning(f'{Fore.GREEN}{filtered_name}'+ f'{Fore.RED} Has Admin-Cluster permission!')
+                self._role.warning(f'{Fore.GREEN}{filtered_name}' + f'{Fore.RED} Has Admin-Cluster permission!')
                 self.add_result(filtered_name, 'Has Admin-Cluster permission!')
 
     #get ANY verbs:
     def any_verb(self, rule, role_name):
         resources = ['secrets',
-                    'configmaps',
-                    'pods',
-                    'deployments',
-                    'daemonsets',
-                    'statefulsets',
-                    'replicationcontrollers',
-                    'replicasets',
-                    'cronjobs',
-                    'jobs',
-                    'roles',
-                    'clusterroles',
-                    'rolebindings',
-                    'clusterrolebindings',
-                    'users',
-                    'groups']
+                     'configmaps',
+                     'pods',
+                     'deployments',
+                     'daemonsets',
+                     'statefulsets',
+                     'replicationcontrollers',
+                     'replicasets',
+                     'cronjobs',
+                     'jobs',
+                     'roles',
+                     'clusterroles',
+                     'rolebindings',
+                     'clusterrolebindings',
+                     'users',
+                     'groups']
         found_sign = [sign for sign in resources if sign in rule['resources']]
         if not found_sign:
             return
         if '*' in rule['verbs']:
             filtered_name = self.get_non_default_name(role_name)
             if filtered_name:
-                self._role.warning(f'{Fore.GREEN}{filtered_name}'+ f'{Fore.RED} Has permission to access {found_sign[0]} with any verb!')
+                self._role.warning(
+                    f'{Fore.GREEN}{filtered_name}' + f'{Fore.RED} Has permission to access {found_sign[0]} with any verb!')
                 self.add_result(filtered_name, f'Has permission to access {found_sign[0]} with any verb!')
 
     def any_resources(self, rule, role_name):
-        verbs = ['delete','deletecollection', 'create','list' , 'get' , 'impersonate']
+        verbs = ['delete', 'deletecollection', 'create', 'list', 'get', 'impersonate']
         found_sign = [sign for sign in verbs if sign in rule['verbs']]
         if not found_sign:
             return
         if ('*' in rule['resources']):
             filtered_name = self.get_non_default_name(role_name)
             if filtered_name:
-                self._role.warning(f'{Fore.GREEN}{filtered_name}'+ f'{Fore.RED} Has permission to use {found_sign[0]} on any resource!')
+                self._role.warning(
+                    f'{Fore.GREEN}{filtered_name}' + f'{Fore.RED} Has permission to use {found_sign[0]} on any resource!')
                 self.add_result(filtered_name, f'Has permission to use {found_sign[0]} on any resource')
 
     def high_risk_roles(self, rule, role_name):
-        verb_actions = ['create','update']
+        verb_actions = ['create', 'update']
         # adding pods to cover privilege pod scenarios and pods being used for mining example
-        resources_attributes = ['pods', 'deployments','daemonsets','statefulsets','replicationcontrollers','replicasets','jobs','cronjobs']
+        resources_attributes = ['pods', 'deployments', 'daemonsets', 'statefulsets', 'replicationcontrollers',
+                                'replicasets', 'jobs', 'cronjobs']
         found_attribute = [attribute for attribute in resources_attributes if attribute in rule['resources']]
         if not (found_attribute):
             return
@@ -152,26 +157,27 @@ class ExtensiveRolesChecker(object):
             return
         filtered_name = self.get_non_default_name(role_name)
         if filtered_name:
-            self._role.warning(f'{Fore.GREEN}{filtered_name}'+ f'{Fore.RED} Has permission to {found_actions[0]} {found_attribute[0]}!')
+            self._role.warning(
+                f'{Fore.GREEN}{filtered_name}' + f'{Fore.RED} Has permission to {found_actions[0]} {found_attribute[0]}!')
             self.add_result(filtered_name, f'Has permission to {found_actions[0]} {found_attribute[0]}!')
 
     def role_and_roleBindings(self, rule, role_name):
-        resources_attributes = ['rolebindings','roles','clusterrolebindings']
+        resources_attributes = ['rolebindings', 'roles', 'clusterrolebindings']
         found_attribute = [attribute for attribute in resources_attributes if attribute in rule['resources']]
         if not found_attribute:
             return
         if ('create' in rule['verbs']):
             filtered_name = self.get_non_default_name(role_name)
             if filtered_name:
-                self._role.warning(f'{Fore.GREEN}{filtered_name}' + f'{Fore.RED} Has permission to create {found_attribute[0]}!')
+                self._role.warning(
+                    f'{Fore.GREEN}{filtered_name}' + f'{Fore.RED} Has permission to create {found_attribute[0]}!')
                 self.add_result(filtered_name, f'Has permission to create {found_attribute[0]}!')
-
 
     def create_pods(self, rule, role_name):
         if 'pods' in rule['resources'] and 'create' in rule['verbs']:
             filtered_name = self.get_non_default_name(role_name)
             if filtered_name:
-                self._role.warning(f'{Fore.GREEN}{filtered_name}'+ f'{Fore.RED} Has permission to create pods!')
+                self._role.warning(f'{Fore.GREEN}{filtered_name}' + f'{Fore.RED} Has permission to create pods!')
                 self.add_result(filtered_name, 'Has permission to create pods!')
 
     def pods_exec(self, rule, role_name):
@@ -190,7 +196,8 @@ class ExtensiveRolesChecker(object):
 
     @staticmethod
     def get_non_default_name(name):
-        if not ((name[:7] == 'system:') or (name == 'edit') or (name == 'admin') or (name == 'cluster-admin') or (name == 'aws-node') or (name[:11] == 'kubernetes-')):
+        if not ((name[:7] == 'system:') or (name == 'edit') or (name == 'admin') or (name == 'cluster-admin') or (
+                name == 'aws-node') or (name[:11] == 'kubernetes-')):
             return name
 
 
@@ -221,9 +228,11 @@ class roleBindingChecker(object):
 
     def print_rolebinding_results(self, sub, role_name, bind_kind):
         if sub['kind'] == 'ServiceAccount':
-            print(f'{Fore.YELLOW}[!][{bind_kind}]{Fore.WHITE}\u2192 ' + f'{Fore.GREEN}{role_name}{Fore.RED} is bound to {sub["name"]} ServiceAccount.')
+            print(
+                f'{Fore.YELLOW}[!][{bind_kind}]{Fore.WHITE}\u2192 ' + f'{Fore.GREEN}{role_name}{Fore.RED} is bound to {sub["name"]} ServiceAccount.')
         else:
-            print(f'{Fore.YELLOW}[!][{bind_kind}]{Fore.WHITE}\u2192 ' + f'{Fore.GREEN}{role_name}{Fore.RED} is bound to the {sub["kind"]}: {sub["name"]}!')
+            print(
+                f'{Fore.YELLOW}[!][{bind_kind}]{Fore.WHITE}\u2192 ' + f'{Fore.GREEN}{role_name}{Fore.RED} is bound to the {sub["kind"]}: {sub["name"]}!')
 
     def add_role_binding_mapping(self, sub, binding):
         element = next((item for item in self.subject_risky_roles_mapping if item['name'] == sub.get('name')), None)
@@ -349,6 +358,7 @@ class SubjectViewer:
 
         return metadata
 
+
 if __name__ == '__main__':
     args = get_argument_parser()
     if args.clusterRole:
@@ -383,12 +393,17 @@ if __name__ == '__main__':
     if (args.role and args.rolebindings) or args.clusterRole and args.clusterrolebindings:
         print(f'{Fore.WHITE}[*] Started enumerating risky subjects:')
 
+    # Implemented out_path for Kubenumerate to control where the output goes, and not to dump it to cwd
+    out_path = ""
+    if args.outputjson is not None:
+        out_path = args.outputjson
+
     if args.role and args.rolebindings:
         subject_viewer = SubjectViewer(extensive_RoleBindings.subject_risky_roles_mapping, extensiveRolesChecker, pods)
         subject_viewer.print_risky_roles_for_subjects()
 
         if args.outputjson:
-            text_file = open("role_audit.json", "w")
+            text_file = open(f"{out_path}role_audit.json", "w")
             text_file.write(json.dumps(subject_viewer.get_json()))
             text_file.close()
 
@@ -401,6 +416,6 @@ if __name__ == '__main__':
         subject_viewer_cluster_level.print_risky_roles_for_subjects()
 
         if args.outputjson:
-            text_file = open("cluster_role_audit.json", "w")
+            text_file = open(f"{out_path}cluster_role_audit.json", "w")
             text_file.write(json.dumps(subject_viewer_cluster_level.get_json()))
             text_file.close()

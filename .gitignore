@@ -5,3 +5,6 @@ kubenumerate_out/
 kubenumerate_example_output/
 /venv/
 .idea/
+/rbac-police-test/
+/role_audit.json
+/cluster_role_audit.json

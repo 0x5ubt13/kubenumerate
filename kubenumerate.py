@@ -27,9 +27,9 @@ class Kubenumerate:
                  inst_jq=False, inst_kubeaudit=False, inst_kubebench=False, inst_kubectl=False, inst_trivy=False,
                  install=False, kubeaudit_bin="kubeaudit", kubeaudit_file="", kube_bench_bin="kube-bench",
                  kube_bench_file="", kubectl_bin="kubectl", kubectl_path="/tmp/kubenumerate_out/kubectl_output/",
-                 kube_version="v1.30.3", limits=True, namespace="-A", out_path="/tmp/kubenumerate_out/",
+                 kube_version="v1.31.0", limits=True, namespace="-A", out_path="/tmp/kubenumerate_out/",
                  pkl_recovery="", pods="", pods_file="", privesc=False, privileged=False, rbac_police=False,
-                 requisites=None, trivy_bin="trivy", trivy_file="", verbosity=1, version="1.1.0", version_diff=0,
+                 requisites=None, trivy_bin="trivy", trivy_file="", verbosity=1, version="1.2.0-dev", version_diff=0,
                  vuln_image=False):
         """Initialize attributes"""
 
@@ -529,9 +529,10 @@ class Kubenumerate:
 
                 # Save the output to its own file
                 with open(f'{self.kubectl_path}{resource}.json', "w") as f:
-                    # Check to avoid creating empty list file
+                    # Check to avoid creating empty list file ####TODO: check this works as intended
                     contents = json.loads(stdout.decode("utf-8"))
                     if not contents["items"]:
+                        print(f'{self.cyan_text("[*]")} DEBUG (DEV branch): not saving file because it came up empty')
                         continue
                     contents_str = json.dumps(contents, indent=4)
                     f.write(contents_str)
@@ -648,11 +649,6 @@ class Kubenumerate:
         with open(self.kubeaudit_file, "r") as kubeaudit_f:
             with open(self.kube_bench_file, "r") as kube_bench_f:
                 with pd.ExcelWriter(self.excel_file, engine='xlsxwriter', mode="w") as writer:
-                    # Setting the headers format
-                    headers_config = writer.book.add_format({
-
-                    })
-
                     # Make dataframe for Kubeaudit
                     kubeaudit_df = pd.read_json(kubeaudit_f, lines=True)
 
@@ -709,7 +705,8 @@ class Kubenumerate:
                            f" --role roles.json"
                            f" --rolebindings rolebindings.json"
                            f" --clusterrolebindings clusterrolebindings.json"
-                           f" --pods pods.json").split(" ")
+                           f" --pods pods.json"
+                           "--outputjson").split(" ")
             else:
                 command = (f"python3 {extensive_role_check_file_path}"
                            f" --clusterRole {self.kubectl_path}clusterroles.json"
@@ -755,20 +752,21 @@ class Kubenumerate:
 
         current_latest = self.fetch_latest_kubernetes_version()
         if not current_latest:
-            print(f'{self.red_text("[-]")} Error detected while running curl trying to fetch kubernetes last version: '
-                  f'{e}')
             print(f'{self.red_text("[-]")} This will now default to a hard-coded version (v{self.kube_version}). '
                   f'Although the developer tries to maintain Kubenumerate updated, you should ensure this version is '
                   f'up-to-date, otherwise you might flag a false positive.')
         else:
+            print(f'{self.green_text("[+]")} Successfully queried last version of k8s: '
+                  f'{self.yellow_text(f"v{self.kube_version}")}.')
             self.kube_version = current_latest
 
         if Version(self.cluster_version) < Version(self.kube_version):
             self.version_diff = int(self.kube_version.split(".")[1]) - int(self.cluster_version.split(".")[1])
 
-    @staticmethod
-    def fetch_latest_kubernetes_version():
+    def fetch_latest_kubernetes_version(self):
         try:
+            # Command for dev purposes:
+            # curl -s https://api.github.com/repos/kubernetes/kubernetes/releases/latest | jq -r .tag_name | sed 's/v//'
             command = ("curl -s https://api.github.com/repos/kubernetes/kubernetes/releases/latest | "
                        "jq -r .tag_name | "
                        "sed 's/v//'").split(" ")
@@ -782,13 +780,14 @@ class Kubenumerate:
                 print(f'{self.red_text("[-]")} Error while running curl trying to fetch kubernetes last version: '
                       f'{stderr.decode("utf-8")}')
                 print(f'{self.red_text("[-]")} This will now default to a hard-coded version (v{self.kube_version}). '
-                      f'Although the developer tries to maintain Kubenumerate updated, you should ensure this version is '
-                      f'up-to-date, otherwise you might flag a false positive.')
+                      f'Although the developer tries to maintain Kubenumerate updated, you should ensure this version '
+                      f'is up-to-date, otherwise you might flag a false positive.')
                 return None
 
-            return latest_version
+            return stdout.decode("utf-8")
 
         except Exception as e:
+            print(f'Debug: error: {e}')
             return None
 
     @staticmethod
