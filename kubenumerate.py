@@ -697,6 +697,8 @@ class Kubenumerate:
             Path.touch(role_check_out_path, 0o644)
             command = ""
             # python3 ExtensiveRoleCheck.py
+            # TODO: run KubiScan instead if --dry-run has not been added as an arg
+            # TODO: implement grabbing KubiScan and using it: https://github.com/cyberark/KubiScan.git -> python3 KubiScan.py -a
             if self.dry_run:
                 print(f'{self.cyan_text("[*]")} --dry-run flag detected. Using current directory to fetch json files '
                       'needed to run ExtensiveRoleCheck.py.')
@@ -705,8 +707,7 @@ class Kubenumerate:
                            f" --role roles.json"
                            f" --rolebindings rolebindings.json"
                            f" --clusterrolebindings clusterrolebindings.json"
-                           f" --pods pods.json"
-                           "--outputjson").split(" ")
+                           f" --pods pods.json").split(" ")
             else:
                 command = (f"python3 {extensive_role_check_file_path}"
                            f" --clusterRole {self.kubectl_path}clusterroles.json"
@@ -1861,6 +1862,16 @@ class Kubenumerate:
     def raise_issues(self):
         """ Suggest what issues might be present """
 
+        issues_raised = {
+            "version": False,
+            "hardened": False,
+            "automount": False,
+            "vuln_image": False,
+            "privileged": False,
+            "cis_detected": False,
+            "limits_set": False,
+        }
+
         if (self.hardened and not self.automount and not self.vuln_image and self.version_diff <= 1 and
                 not self.privileged_flag and not self.cis_detected and not self.limits_set):
             print(f'{self.green_text("[+]")} No findings detected in the cluster.')
@@ -1871,30 +1882,37 @@ class Kubenumerate:
         # Kubernetes Version Outdated
         if self.version_diff > 1:
             print(f'\t{self.red_text("[!]")} Kubernetes Version Outdated')
+            issues_raised["version"] = True
 
         # Containers Not Hardened
         if not self.hardened:
             print(f'\t{self.red_text("[!]")} Containers Not Hardened')
+            issues_raised["hardened"] = True
 
         # Containers Automount Service Account Token
         if self.automount:
             print(f'\t{self.red_text("[!]")} Containers Automount Service Account Token')
+            issues_raised["automount"] = True
 
         # Vulnerable Container Images Pulled From Third-Party Repositories
         if self.vuln_image:
             print(f'\t{self.red_text("[!]")} Vulnerable Container Images Pulled From Third-Party Repositories')
+            issues_raised["vuln_image"] = True
 
         # Containers Allowing Privilege Escalation
         if self.privileged_flag:
             print(f'\t{self.red_text("[!]")} Containers Allowing Privilege Escalation')
+            issues_raised["privileged"] = True
 
         # CIS Benchmarks
         if self.cis_detected:
             print(f'\t{self.red_text("[!]")} CIS Benchmarks')
+            issues_raised["cis_detected"] = True
 
         # CPU usage
         if not self.limits_set:
             print(f'\t{self.red_text("[!]")} CPU usage')
+            issues_raised["limits_set"] = True
 
         # Suggest using RBAC Police (implementing this in the future)
         # TODO: change this with extensiveRoleCheck.py's parsed output
@@ -1902,6 +1920,9 @@ class Kubenumerate:
             print(
                 f'{self.yellow_text("[!]")} Running RBAC Police next might be interesting...\n\t('
                 f'https://github.com/PaloAltoNetworks/rbac-police)')
+
+        with open("test_issues_dict.txt", "w") as f:
+            f.write(str(issues_raised))
 
     def colour_cells_and_save_to_excel(self, title, subtitle, sheet_name, df, writer):
         workbook = writer.book

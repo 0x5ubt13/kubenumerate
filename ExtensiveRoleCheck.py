@@ -22,8 +22,7 @@ def get_argument_parser():
     parser.add_argument('--rolebindings', type=str, required=False, help='RoleBindings JSON file')
     parser.add_argument('--clusterrolebindings', type=str, required=False, help='ClusterRoleBindings JSON file')
     parser.add_argument('--pods', type=str, required=False, help='pods JSON file')
-    parser.add_argument('--outputjson', default=f"/tmp/kubenumerate_out/rbac_check_out",
-                        help='Produce json files with audit report')
+
     return parser.parse_args()
 
 
