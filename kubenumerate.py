@@ -846,35 +846,39 @@ class Kubenumerate:
 
     def get_kubebench_output(self):
         """Run 'kube-bench run --targets=node,policies' command and return pointer to output file location"""
-
         if self.verbosity > 0:
             print(f'{self.cyan_text("[*]")} Running kube-bench, please wait...')
 
+        # TODO: I don't entirely like this logic. It should be:
+        #   if I know where the kube-bench release folder with the config and the binary is, use that.
+        #   if not known, and not in /tmp (and thus not installed by kubenumeraga):
+        #       try to find it
+        #       if not found:
+        #           user input -> please tell me where to look for the kube-bench binary
         kube_bench_config_flag = ""
         if self.kube_bench_bin == "/tmp/kube-bench/kube-bench":
             kube_bench_config_flag = "--config-dir /tmp/kube-bench/cfg/"
 
         command = f"{self.kube_bench_bin} {kube_bench_config_flag} run --targets=node,policies --json".split(" ")
-
-        try:
-            process = subprocess.run(command, check=True, capture_output=True, text=True)
-            print("Process exited with code 0 (success)")
-        except subprocess.CalledProcessError as e:
-            print(f'{self.red_text("[-]")} Process exited with code {e.returncode}: {e}. Retrying with sudo...')
-            command.insert(0, "sudo")
+        sudo, kube_bench_error = False, ""
+        while True:
             try:
+                if sudo:
+                    command.insert(0, "sudo")
                 process = subprocess.run(command, check=True, capture_output=True, text=True)
-                print("Process exited with code 0 (success)")
-            except subprocess.CalledProcessError as e:
-                print(f'{self.red_text("[-]")} Process exited with code {e.returncode}: {e}. Retrying with sudo...')
-                sys.exit(1)
-
-        # Save the output to a file
-        with open(self.kube_bench_file, "w") as output_kube_bench_file:
-            output_kube_bench_file.write(process.stdout)
-
-        if self.verbosity > 0:
-            print(f'{self.green_text("[+]")} Done. Kube-bench output saved to {self.cyan_text(self.kube_bench_file)}')
+                with open(self.kube_bench_file, "w") as output_kube_bench_file:
+                    output_kube_bench_file.write(process.stdout.decode("utf-8"))
+                if self.verbosity > 0:
+                    print(f'{self.green_text("[+]")} Done. Kube-bench output saved to '
+                          f'{self.cyan_text(self.kube_bench_file)}')
+            except subprocess.CalledProcessError as kube_bench_error:
+                if not sudo:
+                    print(f'{self.red_text("[-]")} Process exited with code {kube_bench_error.returncode}: '
+                          f'{kube_bench_error}. Retrying with sudo...')
+                    sudo = True
+                    continue
+                print(f'{self.red_text("[-]")} An elevated Kube-bench process still exited with code '
+                      f'{kube_bench_error.returncode}: {kube_bench_error}. Please check why Kube-bench isn\'t working')
 
     def cis(self, df, writer):
         """Parse the kube-bench JSON file to generate a sheet containing the CIS benchmarks that failed and warned"""
