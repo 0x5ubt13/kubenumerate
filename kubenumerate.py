@@ -14,7 +14,6 @@ import sys
 import re
 import time
 import yaml
-from xlsxwriter.exceptions import DuplicateWorksheetName
 
 
 class Kubenumerate:
@@ -463,7 +462,6 @@ class Kubenumerate:
         """Gather all output from kubectl in both json and yaml"""
 
         # Get cluster version first
-        kubectl_cluster_version_file = f''
         kubectl_cluster_version_command = [self.kubectl_bin, "version"]
         try:
             cluster_version_process = subprocess.Popen(
@@ -695,10 +693,10 @@ class Kubenumerate:
         extensive_role_check_file_path = 'ExtensiveRoleCheck.py'
         try:
             Path.touch(role_check_out_path, 0o644)
-            command = ""
             # python3 ExtensiveRoleCheck.py
             # TODO: run KubiScan instead if --dry-run has not been added as an arg
-            # TODO: implement grabbing KubiScan and using it: https://github.com/cyberark/KubiScan.git -> python3 KubiScan.py -a
+            # TODO: implement grabbing KubiScan and using it:
+            #   https://github.com/cyberark/KubiScan.git -> python3 KubiScan.py -a
             if self.dry_run:
                 print(f'{self.cyan_text("[*]")} --dry-run flag detected. Using current directory to fetch json files '
                       'needed to run ExtensiveRoleCheck.py.')
