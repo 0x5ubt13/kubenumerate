@@ -616,7 +616,7 @@ class Kubenumerate:
                 f'{self.yellow_text("pods.json")}; {self.cyan_text("kubeaudit")} all -p json {self.cyan_text(">")} '
                 f'{self.yellow_text("kubeaudit_out.json")}; {self.cyan_text("echo")} "Done"\n\n'
                 f'Then from your host:\n{self.cyan_text("scp")} {self.green_text("-i")} '
-                f'{self.yellow_text("<rsa_id> <remoteuser>")}@{self.yellow_text("<10.10.10.10>")}:'
+                f'{self.yellow_text("<rsa_id> <remote_user>")}@{self.yellow_text("<10.10.10.10>")}:'
                 f'{self.yellow_text("<folder>")}*.json .\n')
             print(
                 f'And finally use kubenumerate with the data you just extracted:\n{self.cyan_text("kubenumerate")} '
@@ -686,13 +686,13 @@ class Kubenumerate:
             print(f'{self.green_text("[+]")} Done! All output successfully saved to {self.cyan_text(self.excel_file)}')
 
         # Run ExtensiveRoleCheck.py
+        # TODO: make this go into its own method (i.e. self.do_role_check())
         print(f'{self.cyan_text("[*]")} Extra: including ExtensiveRoleCheck.py to Kubenumerate (dev branch only)')
         # TODO: embed this better in the Kubenumerate class
         # TODO: get output in JSON and parse to flag RBAC in self.raise_issues()
         role_check_out_path = f'{self.out_path}ExtensiveRoleCheck_output.txt'
         extensive_role_check_file_path = 'ExtensiveRoleCheck.py'
         try:
-            Path.touch(role_check_out_path, 0o644)
             # python3 ExtensiveRoleCheck.py
             # TODO: run KubiScan instead if --dry-run has not been added as an arg
             # TODO: implement grabbing KubiScan and using it:
@@ -728,17 +728,14 @@ class Kubenumerate:
                       f'ClusterRoleBindings, or Pods')
 
             # Save the output to its own file
+            Path.touch(role_check_out_path, 0o644)
             with open(f'{role_check_out_path}', "w") as f:
-                f.write(stdout.decode("utf-8"))
                 f.write(stderr.decode("utf-8"))
+                f.write(stdout.decode("utf-8"))
                 print(f'{self.green_text("[+]")} Done! ExtensiveRoleCheck.py output successfully saved to '
                       f'{role_check_out_path}')
         except Exception as e:
-            print(
-                f'{self.red_text("[-]")} Error detected while launching `python3 ExtensiveRoleCheck.py`: {e}')
-
-        # TODO: Create parsing function
-        # self.parse_ExtensiveRoleCheck()
+            print(f'{self.red_text("[-]")} Error detected while launching `python3 ExtensiveRoleCheck.py`: {e}')
 
         # Finish by raising issues to the terminal
         self.raise_issues()
@@ -1509,8 +1506,8 @@ class Kubenumerate:
                 "Privileged flag not set to false in SecurityContext",
                 "Running a container as privileged gives all capabilities to the container, and it also lifts "
                 "all the limitations enforced by the device cgroup controller. In other words, the container can then "
-                "do almost everything that the host can do. This option exists to allow special use-cases, like running "
-                "Docker within Docker, but should not be used in most cases.",
+                "do almost everything that the host can do. This option exists to allow special use-cases, like running"
+                " Docker within Docker, but should not be used in most cases.",
                 "Privileged - Nil",
                 df_privileged_nil,
                 writer
@@ -1926,6 +1923,7 @@ class Kubenumerate:
         with open("test_issues_dict.txt", "w") as f:
             f.write(str(issues_raised))
 
+    # TODO: Minimal improvement: check whether @static works fine here
     def colour_cells_and_save_to_excel(self, title, subtitle, sheet_name, df, writer):
         workbook = writer.book
         worksheet = workbook.add_worksheet(sheet_name)
@@ -1935,7 +1933,7 @@ class Kubenumerate:
         header_format = workbook.add_format({
             'font_name': 'Calibri', 'bg_color': '#A93545', 'bold': True, 'font_color': 'white', 'align': 'left'})
         title_format = workbook.add_format({
-            'font_name': 'Calibri', 'bg_color': '#A93545', 'font_color': 'white','font_size': 20})
+            'font_name': 'Calibri', 'bg_color': '#A93545', 'font_color': 'white', 'font_size': 20})
         bg_format1 = workbook.add_format({'bg_color': '#E2E2E2'})
         bg_format2 = workbook.add_format({'bg_color': 'white'})
 
