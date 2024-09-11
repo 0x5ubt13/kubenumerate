@@ -1,26 +1,26 @@
 #!/usr/bin/python3
 
 import argparse
-import io
-import zipfile
-from datetime import datetime
 import json
 import os
-import requests
-from packaging.version import Version
 import pandas as pd
-from pathlib import Path
 import pickle
+import re
+import requests
 import shutil
 import subprocess
 import sys
-import re
+import tarfile
 import time
 import yaml
+import zipfile
+from datetime import datetime
+from packaging.version import Version
+from pathlib import Path
 
 
 class Kubenumerate:
-    """ A class to automatically launch and parse several Kubernetes security auditing tools, by Subtle
+    """ A class to automatically launch and parse several Kubernetes security auditing tools, by Subtle.
         PRs: https://github.com/0x5ubt13/kubenumerate
     """
 
@@ -30,10 +30,10 @@ class Kubenumerate:
                  inst_kubebench=False, inst_kubectl=False, inst_kubiscan=False, inst_trivy=False, inst_wget=False,
                  install=False, jq_bin="jq", kubeaudit_bin="kubeaudit", kubeaudit_file="", kube_bench_bin="kube-bench",
                  kube_bench_file="", kubectl_bin="kubectl", kubectl_path="/tmp/kubenumerate_out/kubectl_output/",
-                 kube_version="v1.31.0", kubiscan_py="", limits=True, namespace="-A", out_path="/tmp/kubenumerate_out/",
-                 pkl_recovery="", pods="", pods_file="", privesc=False, privileged=False, py_bin="/usr/bin/python3",
-                 rbac_police=False, requisites=None, trivy_bin="trivy", trivy_file="", verbosity=1, version="1.2.0-dev",
-                 version_diff=0, vuln_image=False, wget_bin="wget"):
+                 kube_version="v1.31.0", kubiscan_path="/tmp/kubiscan/", kubiscan_py="", limits=True, namespace='-A',
+                 out_path="/tmp/kubenumerate_out/", pkl_recovery="", pods="", pods_file="", privesc=False,
+                 privileged=False, py_bin="/usr/bin/python3", requisites=None, sus_rbac=False, trivy_bin="trivy",
+                 trivy_file="", verbosity=1, version="1.2.0", version_diff=0, vuln_image=False, wget_bin="wget"):
         """Initialize attributes"""
 
         if requisites is None:
@@ -66,6 +66,7 @@ class Kubenumerate:
         self.kubectl_bin = kubectl_bin
         self.kubectl_path = kubectl_path
         self.kube_version = kube_version
+        self.kubiscan_path = kubiscan_path
         self.kubiscan_py = kubiscan_py
         self.limits_set = limits
         self.namespace = namespace
@@ -74,7 +75,7 @@ class Kubenumerate:
         self.pods_file = pods_file
         self.privesc_set = privesc
         self.privileged_flag = privileged
-        self.rbac_police = rbac_police
+        self.sus_rbac = sus_rbac
         self.requisites = requisites
         self.trivy_bin = trivy_bin
         self.trivy_file = trivy_file
@@ -90,8 +91,8 @@ class Kubenumerate:
         """Parse args and return them"""
 
         parser = argparse.ArgumentParser(
-            description='Uses local kubeconfig file to launch kubeaudit, kube-bench, kubectl and trivy and parses all '
-                        'useful output to excel.')
+            description='Uses local kubeconfig file to launch kubeaudit, kube-bench, kubectl, trivy and KubiScan '
+                        'and parses all useful output to excel.')
         parser.add_argument(
             '--cheatsheet',
             '-c',
@@ -148,7 +149,7 @@ class Kubenumerate:
             if os.path.isfile('/tmp/kube-bench/kube-bench'):
                 self.kube_bench_bin = "/tmp/kube-bench/kube-bench"
             else:
-                self.requisites.append("kube-bench'")
+                self.requisites.append("kube-bench")
         if not shutil.which("kubectl"):
             if os.path.isfile('/home/linuxbrew/.linuxbrew/bin/kubectl'):
                 self.kubectl_bin = "/home/linuxbrew/.linuxbrew/bin/kubectl"
@@ -160,9 +161,8 @@ class Kubenumerate:
             else:
                 self.requisites.append("trivy")
         if not shutil.which("kubiscan"):
-            if os.path.isfile('/tmp/kubiscan/kubiscan.py'):
-                self.kubiscan_py = "/tmp/kubiscan/kubiscan.py"
-            else:
+
+            if not self.find_kubiscan_bin():
                 self.requisites.append("kubiscan")
         if not shutil.which("jq"):
             if os.path.isfile('/home/linuxbrew/.linuxbrew/bin/trivy'):
@@ -174,7 +174,6 @@ class Kubenumerate:
                 self.wget_bin = "/home/linuxbrew/.linuxbrew/bin/wget"
             else:
                 self.requisites.append("wget")
-
 
         if len(self.requisites) > 0:
             self.install_requisites()
@@ -242,16 +241,15 @@ class Kubenumerate:
             if not self.install:
                 print(f'{self.red_text("[-]")} Please install KubiScan: https://github.com/cyberark/KubiScan')
             else:
-                if not os.path.isfile('/tmp/kubiscan/kubiscan.py'):
+                if not os.path.isfile('/tmp/kubiscan/KubiScan.py'):
                     self.install_tool("kubiscan")
 
         if not self.install:
-            print(f'{self.red_text("[-]")} Since no consent was given, this program is about to exit. Please install '
-                  f'manually all components above.')
             sys.exit(2)
 
-        print(f'{self.green_text("[+]")} Rerunning Kubenumerate with all necessary software successfully installed '
-              f'in the system. If it fails, please run Kubenumerate again to make sure all tools are in your path')
+        print(f'{self.green_text("[+]")} Rerunning {self.cyan_text("Kubenumerate")} with all necessary software '
+              f'successfully installed in the system. If it fails, please run Kubenumerate again to make sure all '
+              f'tools are in your path')
         os.execv(sys.executable, ['python'] + sys.argv)
 
     def ask_for_permission(self):
@@ -267,7 +265,6 @@ class Kubenumerate:
                 print_brew_message = True
                 self.inst_kubeaudit = True
             elif tool == "kube-bench":
-                print_brew_message = True
                 self.inst_kubebench = True
             elif tool == "kubectl":
                 print_brew_message = True
@@ -284,13 +281,18 @@ class Kubenumerate:
             print(f'\t- {self.yellow_text(f"{tool}")}')
 
         if print_brew_message:
-            print(f'{self.yellow_text("[!]")} {self.cyan_text("Brew")} (https://brew.sh), will be used as package '
-                  f'manager to install these. If it\'s not in the system, it will also be installed.\n')
+            print(f'{self.yellow_text("[!]")} {self.cyan_text("Brew")} (https://brew.sh), will be used as the '
+                  f'package manager to install at least some of these. If it\'s not in the system, it will also '
+                  f'be installed.\n')
 
         while True:
             answer = input(
-                f'{self.yellow_text("[!]")} Do you give your consent to install all the above? '
-                f'{self.cyan_text("[y/n]")} ').strip().lower()
+                f'{self.yellow_text("[!]")} Do you give your {self.green_text("consent")} to install all the above?\n'
+                f'\tIf {self.green_text("yes")}, {self.cyan_text("Kubenumerate")} will '
+                f'{self.yellow_text("install all of them")} and {self.yellow_text("restart automatically")}.\n'
+                f'\tIf {self.red_text("no")}, {self.cyan_text("Kubenumerate")} will prompt you where are the official '
+                f'repos to download and install the tools manually from.\n Your choice '
+                f'{self.cyan_text("[y/n]:")} ').strip().lower()
             if not answer.startswith("y") and not answer.startswith("n"):
                 print(f'{self.red_text("[-]")} Incorrect answer registered. Please type "y" to accept or "n" to deny.')
                 continue
@@ -301,6 +303,9 @@ class Kubenumerate:
 
             if answer.startswith("n"):
                 self.install = False
+                print(
+                    f'{self.red_text("[-]")} No consent given, {self.cyan_text("Kubenumerate")} will exit now. Please find below all the '
+                    f'required tools below and their official repositories for you to manually download and install:\n')
                 break
 
         if not shutil.which("brew"):
@@ -328,94 +333,108 @@ class Kubenumerate:
             except Exception as e:
                 print(f'{self.red_text("[-]")} Error whilst installing brew: {e}')
                 sys.exit(1)
-        elif tool == "kube-bench":
-            self.fetch_and_download_latest_version_from_github("kube-bench")
-            # try:
-            #     subprocess.run(
-            #         "mkdir /tmp/kube-bench/; "
-            #         "curl -s https://api.github.com/repos/aquasecurity/kube-bench/releases/latest | "
-            #         "jq -r '.assets[] | select(.name | test(\"linux_amd64.tar.gz\")) | .browser_download_url' | "
-            #         "wget -i - -P /tmp/kube-bench/",
-            #         shell=True, executable=shell)
-            #     subprocess.run("cd /tmp/kube-bench; tar -xvf /tmp/kube-bench/kube-bench*",
-            #                    shell=True, executable=shell)
-            #     subprocess.run(
-            #         "chmod +x /tmp/kube-bench/kube-bench; ln -s /tmp/kube-bench/kube-bench /usr/local/bin/kube-bench",
-            #         shell=True, executable=shell)
-            # except Exception as e:
-            #     print(f'{self.red_text("[-]")} Error whilst installing kube-bench: {e}')
-            #     sys.exit(1)
-        elif tool == "kubiscan":
-            self.fetch_and_download_latest_version_from_github("kubiscan")
-            # try:
-            #     print("installing kubiscan")
-            #     # TODO: Check it's installing kubiscan properly
-            #     # URL to download the repository as a ZIP file
-            #     url = "https://github.com/cyberark/kubiscan/archive/refs/heads/main.zip"
-            #
-            #     # Send a GET request to download the ZIP file
-            #     response = requests.get(url)
-            #
-            #     # Check if the request was successful
-            #     if response.status_code == 200:
-            #         # Extract the ZIP file
-            #         with zipfile.ZipFile(io.BytesIO(response.content)) as zip_ref:
-            #             zip_ref.extractall("/tmp/kubiscan")
-            #         print("DEV DEBUG: Kubiscan's repository downloaded and extracted successfully.")
-            #         # TODO: install kubiscan's requisites and run it
-            #         self.kubiscan_py = '/tmp/kubiscan/KubiScan.py'
-            #     else:
-            #         print(f"Failed to download repository: {response.status_code}")
-            # except Exception as e:
-            #     print(f'{self.red_text("[-]")} Error while installing kubiscan: {e}')
-            #     sys.exit(1)
-        else:
+            return
+
+        if tool == "kube-bench":
+            downloaded_tarball = self.fetch_and_download_latest_version_from_github("kube-bench")
+            kube_bench_path = "/tmp/kube-bench/"
+            # Untar kube-bench
             try:
-                subprocess.run(f"{self.brew_bin} install {tool}", shell=True, executable=shell)
+                with tarfile.open(downloaded_tarball, "r:gz") as tarball:
+                    tarball.extractall(path=kube_bench_path)
+                    # Find the kube-bench binary
+                    self.kube_bench_bin = next(
+                        os.path.join(root, file) for root, dirs, files in os.walk(kube_bench_path) for file in files if
+                        file == "kube-bench")
+                    # Make it executable
+                    os.chmod(self.kube_bench_bin, 0o755)
+                # print("DEBUG DEV: kube-bench installed successfully")
             except Exception as e:
-                print(f'{self.red_text("[-]")} Error whilst installing {tool}: {e}')
-                sys.exit(1)
+                print(f"{self.red_text('[-]')} It was not possible to download kube-bench: {e}")
+            return
+            # curl | jq | wget command for debugging purposes:
+            #   curl -s https://api.github.com/repos/aquasecurity/kube-bench/releases/latest | \
+            #   jq -r '.assets[] | select(.name | test(\"linux_amd64.tar.gz\")) | .browser_download_url' | \
+            #   wget -i - -P /tmp/kube-bench/"
+
+        if tool == "kubiscan":
+            try:
+                downloaded_zipball = self.fetch_and_download_latest_version_from_github("kubiscan")
+                # print("DEBUG DEV: kubiscan downloaded successfully")
+
+                kubiscan_path = "/tmp/kubiscan/"
+                # Extract the tool
+                try:
+                    with zipfile.ZipFile(downloaded_zipball, 'r') as zip_ref:
+                        zip_ref.extractall(kubiscan_path)
+                    # print(f"DEV DEBUG: {tool}'s repository downloaded and extracted successfully.")
+                except Exception as e:
+                    print(f'{self.red_text("[-]")} Error while extracting {tool}: {e}')
+                    sys.exit(1)
+
+                # Find the KubiScan.py file in the dynamically named extracted directory
+                for root, dirs, files in os.walk(kubiscan_path):
+                    if "KubiScan.py" in files:
+                        self.kubiscan_py = os.path.join(root, "KubiScan.py")
+                # print("DEBUG DEV: kubiscan path:", self.kubiscan_py)
+            except Exception as e:
+                print(f"{self.red_text('[-]')} It was not possible to download kubiscan: {e}")
+            return
+
+        # Any other tool
+        try:
+            subprocess.run(f"{self.brew_bin} install {tool}", shell=True, executable=shell)
+        except Exception as e:
+            print(f'{self.red_text("[-]")} Error whilst installing {tool}: {e}')
+            sys.exit(1)
+
+    def find_kubiscan_bin(self):
+        """Logic needed to cope with dynamically named directory for kubiscan"""
+        for root, dirs, files in os.walk(self.kubiscan_path):
+            if "KubiScan.py" in files:
+                self.kubiscan_py = os.path.join(root, "KubiScan.py")
+                self.kubiscan_path = root
+                return True
+        return False
 
     def fetch_and_download_latest_version_from_github(self, tool):
-        """Fetch latest version of the tool from GitHub. Needs for the repo to be specified"""
+        """Fetch latest version of the tool from GitHub, download and extract it. Needs for the repo to be specified"""
+
+        def get_download_url(target, latest):
+            """Needing to do different download types for different tools as assets are not the same"""
+            if target == "kube-bench":
+                # Find the download URL for the linux_amd64.tar.gz asset
+                return next(asset['browser_download_url']
+                            for asset in latest['assets'] if 'linux_amd64.tar.gz' in asset['name'])
+            if target == "kubiscan":
+                # Python package, simply get the zipball
+                return latest['zipball_url']
+
         try:
-            tool_tmp_dir = f'/tmp/{tool}'
+            tool_tmp_dir, repo, tool_full_path = f'/tmp/{tool}/', '', ''
             os.makedirs(tool_tmp_dir, exist_ok=True)
 
-            repo = ""
             if tool == "kube-bench":
                 repo = "aquasecurity/kube-bench"
+                tool_full_path = f'{tool_tmp_dir}{tool}.tar.gz'
+
             if tool == "kubiscan":
                 repo = "cyberark/KubiScan"
+                tool_full_path = f'{tool_tmp_dir}{tool}.zip'
 
             # Get the latest release URL first
             response = requests.get(f'https://api.github.com/repos/{repo}/releases/latest')
             response.raise_for_status()  # Ensure we notice bad responses
-            release_data = response.json()
+            latest_release_data = response.json()
 
-            print("DEBUG DEV: response.json", response.json(), "\n\n\n")
-
-            # Find the download URL for the linux_amd64.tar.gz asset
-            # download_url = next(asset['browser_download_url'] for asset in release_data['assets'] if 'linux_amd64.tar.gz' in asset['name'])
-            download_url = next((asset.get('browser_download_url') for asset in release_data['assets'] if
-                                 'linux_amd64.tar.gz' in asset.get('name', '')), None)
-            print("DEBUG DEV: download_url", download_url)
+            download_url = get_download_url(tool, latest_release_data)
+            # print("DEBUG DEV: download_url", download_url)
 
             # Download the file
-            subprocess.run(f"{self.wget_bin}, '-P', {tool_tmp_dir}, {download_url}".split(" "))
+            subprocess.run(f"{self.wget_bin} -P {tool_tmp_dir} {download_url} -O {tool_full_path}".split(" "))
+            return f"{tool_full_path}"
         except Exception as e:
             print(f'{self.red_text("[-]")} Error while fetching {tool}: {e}')
-            return
-
-        # Extract the tool
-        try:
-            with zipfile.ZipFile(io.BytesIO(response.content)) as zip_ref:
-                zip_ref.extractall(tool_tmp_dir)
-            print(f"DEV DEBUG: {tool}'s repository downloaded and extracted successfully.")
-
-        except Exception as e:
-            print(f'{self.red_text("[-]")} Error while extracting {tool}: {e}')
-            sys.exit(1)
 
     def global_checks(self):
         """Perform other necessary checks to ensure a correct execution"""
@@ -469,7 +488,7 @@ class Kubenumerate:
         try:
             os.makedirs(self.out_path)
             if self.verbosity > 0:
-                print(f'{self.green_text("[+]")} Folder "{self.cyan_text(self.out_path)}" created successfully.')
+                print(f'{self.green_text("[+]")} Directory "{self.cyan_text(self.out_path)}" created successfully.')
         except OSError:
             if self.verbosity > 0:
                 print(
@@ -480,8 +499,8 @@ class Kubenumerate:
             try:
                 os.makedirs(self.kubectl_path)
                 if self.verbosity > 0:
-                    print(
-                        f'{self.green_text("[+]")} Folder "{self.cyan_text(self.kubectl_path)}" created successfully.')
+                    print(f'{self.green_text("[+]")} Directory "{self.cyan_text(self.kubectl_path)}" '
+                          f'created successfully.')
             except OSError:
                 if self.verbosity > 0:
                     print(f'Using existing "{self.cyan_text(self.kubectl_path)}" folder for all kubectl output.')
@@ -500,10 +519,11 @@ class Kubenumerate:
 
                 current_context = kubeconfig.get('current-context')
                 print(
-                    f'{self.green_text("[+]")} Kubeconfig successfully loaded from '
-                    f'{self.yellow_text(f"{self.kubeconfig_path}")}')
+                    f'{self.green_text("[+]")} {self.yellow_text("Kubeconfig")} file successfully loaded from '
+                    f'"{self.yellow_text(f"{self.kubeconfig_path}")}".')
                 print(
-                    f'{self.green_text("[+]")} Current context to be scanned: {self.yellow_text(f"{current_context}")}')
+                    f'{self.green_text("[+]")} Current context to be scanned: '
+                    f'"{self.yellow_text(f"{current_context}")}".')
 
             except Exception as e:
                 print(f'{self.red_text("[-]")} Error loading kubeconfig file: {e}')
@@ -558,8 +578,9 @@ class Kubenumerate:
             if self.verbosity > 0:
                 print(f'{self.green_text("[+]")} Using existing "{self.cyan_text(self.kube_bench_file)}" kube-bench '
                       f'file as input file to avoid sending unnecessary requests to the client\'s cluster.')
-                print(f'{self.yellow_text("[!]")} If you want a fresh kube-bench output file, run the following command'
-                      f' and run this program again:\n\t{self.yellow_text(f"rm {self.kube_bench_file}")}')
+                print(f'{self.yellow_text("[!]")} If you want a fresh {self.cyan_text("kube-bench")} output file, run '
+                      f'the following command and then run this program again:\n\t'
+                      f'{self.yellow_text(f"rm {self.kube_bench_file}")}')
             return
 
         # Run kube-bench
@@ -589,23 +610,28 @@ class Kubenumerate:
         if os.path.exists(self.pods_file):
             if self.verbosity > 0:
                 print(
-                    f'{self.green_text("[+]")} Using "{self.cyan_text(self.pods_file)}" file as input file for Trivy')
+                    f'{self.green_text("[+]")} Using "{self.cyan_text(self.pods_file)}" file as input file for '
+                    f'{self.cyan_text("Trivy")}, please wait...')
             with open(self.pods_file, "r") as f:
                 self.pods = json.loads(f.read())
 
     def kubectl_get_all_yaml_and_json(self):
         """Gather all output from kubectl in both json and yaml"""
 
+        # Check if kubeconfig was passed and adjust commands to include the flag
+        if self.args.kubeconfig is not None:
+            self.kubectl_bin = f'{self.kubectl_bin} --kubeconfig={self.args.kubeconfig}'
+
         # Get cluster version first
-        kubectl_cluster_version_command = [self.kubectl_bin, "version"]
+        kubectl_cluster_version_command = f'{self.kubectl_bin} version'
         try:
             cluster_version_process = subprocess.Popen(
-                kubectl_cluster_version_command,
+                kubectl_cluster_version_command.split(" "),
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE)
             cluster_version_stdout, cluster_version_stderr = cluster_version_process.communicate()
 
-            self.cluster_version = self.extract_version(cluster_version_stdout.decode("UTF-8").split(" ")[-1])
+            self.cluster_version = self.extract_version(cluster_version_stdout)
             with open(f'{self.kubectl_path}cluster_version.txt', "w") as f:
                 f.write(self.cluster_version)
 
@@ -626,6 +652,7 @@ class Kubenumerate:
                 f'{self.cyan_text("[*]")} Gathering output from every resource {self.cyan_text(f"kubectl")} has '
                 f'permission to get. Please wait...')
         awk_command = "awk '// {print $1}'"
+
         command = f'{self.kubectl_bin} api-resources --no-headers | {awk_command} | sort -u'
         resources = subprocess.check_output(command, shell=True).decode().split("\n")[:-1]
         total_resources = len(resources)
@@ -664,13 +691,13 @@ class Kubenumerate:
                 # Save the output to its own file
                 contents = json.loads(stdout.decode("utf-8"))
                 if not contents["items"]:
-                    print(f'{self.cyan_text("[*]")} DEBUG (DEV branch): not saving file {resource} because it came up empty')
+                    # print(f'{self.cyan_text("[*]")} DEBUG (DEV branch): not saving file {resource} because it came up empty')
                     skipped += 1
                     continue
 
                 Path.touch(f'{self.kubectl_path}{resource}.json', 0o644)
                 with open(f'{self.kubectl_path}{resource}.json', "w") as f:
-                    # Check to avoid creating empty list file ####TODO: check this works as intended
+                    # Check to avoid creating empty list file
                     contents_str = json.dumps(contents, indent=4)
                     f.write(contents_str)
 
@@ -699,7 +726,9 @@ class Kubenumerate:
             print(f'{self.red_text("[-]")} Error: No resources were found. Are you connected to the cluster?')
 
         print("\n", flush=True, file=sys.stdout)
-        print(f'{self.green_text("[+]")} Successfully extracted {total_resources - skipped}/{total_resources} resources')
+        print(f'{self.green_text("[+]")} Successfully extracted '
+              f'{self.green_text(total_resources - skipped)}/{self.yellow_text(total_resources)} resources (the other '
+              f'{self.yellow_text(skipped)} came up empty so were not collected).')
 
     def launch_gatherer_tools(self):
         """Launch kubeaudit, kube-bench and trivy"""
@@ -750,8 +779,8 @@ class Kubenumerate:
         if self.args.cheatsheet:
             print(f'{self.cyan_text("[*]")} ----- Cheatsheet flag detected -----')
             print(
-                "\nIf your testing host doesn't allow having installed other software than kubeaudit, "
-                "you can extract all you need for Kubenumerate to work with the following one-liner:")
+                f"\nIf your testing host doesn't allow having installed other software than kubeaudit, you can extract "
+                f"all you need for {self.cyan_text('Kubenumerate')} to work with the following one-liner:")
             print(
                 f'{self.cyan_text("kubectl")} get po {self.green_text("-A -o")} json {self.cyan_text(">")} '
                 f'{self.yellow_text("pods.json")}; {self.cyan_text("kubeaudit")} all -p json {self.cyan_text(">")} '
@@ -778,13 +807,12 @@ class Kubenumerate:
             print(f'\n{self.cyan_text("[*]")} ----- Running kubectl, kubeaudit and kube-bench -----')
         self.launch_gatherer_tools()
 
-        # Check versions difference
-        self.kubernetes_version_check()
-
         # Write to Excel file all findings
         if self.verbosity > 0:
             print(
                 f'\n{self.cyan_text("[*]")} ----- Parsing kubeaudit, kube-bench and trivy output, please wait... -----')
+        # Check versions difference
+        self.kubernetes_version_check()
         with open(self.kubeaudit_file, "r") as kubeaudit_f:
             with open(self.kube_bench_file, "r") as kube_bench_f:
                 with pd.ExcelWriter(self.excel_file, engine='xlsxwriter', mode="w") as writer:
@@ -805,7 +833,7 @@ class Kubenumerate:
                     self.root_fs(kubeaudit_df, writer)
                     self.seccomp(kubeaudit_df, writer)
                     if self.verbosity > 0:
-                        print(f'{self.green_text("[+]")} Kubeaudit successfully parsed')
+                        print(f'{self.green_text("[+]")} {self.cyan_text("Kubeaudit")} successfully parsed.')
 
                     # Run Kube-bench methods
                     if not self.dry_run:
@@ -813,7 +841,7 @@ class Kubenumerate:
                         kube_bench_df = pd.json_normalize(kube_bench_dict, record_path=['Controls', 'tests', 'results'])
                         self.cis(kube_bench_df, writer)
                         if self.verbosity > 0:
-                            print(f'{self.green_text("[+]")} Kube-bench successfully parsed')
+                            print(f'{self.green_text("[+]")} {self.cyan_text("Kube-bench")} successfully parsed.')
 
                     # Parse all pods for Trivy
                     self.parse_all_pods()
@@ -821,16 +849,16 @@ class Kubenumerate:
                     # Run trivy methods
                     self.trivy_parser(writer)
                     if self.verbosity > 0:
-                        print(f'{self.green_text("[+]")} Trivy successfully parsed')
+                        print(f'{self.green_text("[+]")} {self.cyan_text("Trivy")} successfully parsed.')
 
         if self.verbosity >= 0:
-            print(f'{self.green_text("[+]")} Done! All output successfully saved to {self.cyan_text(self.excel_file)}')
+            print(f'{self.green_text("[+]")} Done! All output successfully saved to {self.cyan_text(self.excel_file)}.')
 
         # Run ExtensiveRoleCheck.py
-        # TODO: make this go into its own method (i.e. self.do_role_check())
-        print(f'{self.cyan_text("[*]")} Extra: including ExtensiveRoleCheck.py and KubiScan to Kubenumerate (dev branch only)')
-        # TODO: embed this better in the Kubenumerate class
-        # TODO: get output in JSON and parse to flag RBAC in self.raise_issues()
+        # print(f'{self.cyan_text("[*]")} Extra: including ExtensiveRoleCheck.py and KubiScan to Kubenumerate (dev branch only)')
+        if self.verbosity > 0:
+            print(
+                f'\n{self.cyan_text("[*]")} ----- Running RBAC checks, please wait... -----')
         self.check_roles()
 
         # Finish by raising issues to the terminal
@@ -850,7 +878,6 @@ class Kubenumerate:
         role_check_out_path = f'{self.out_path}ExtensiveRoleCheck_output.txt'
         extensive_role_check_file_path = 'ExtensiveRoleCheck.py'
         try:
-
             command = (f"{self.py_bin} {extensive_role_check_file_path}"
                         " --clusterRole clusterroles.json"
                         " --role roles.json"
@@ -870,7 +897,8 @@ class Kubenumerate:
             # TODO: parse error output and print what is the exact cause
             # TODO: check that all mentioned files are bigger than 0, otherwise flag to user
             if len(stderr) > 0:
-                print(f'{self.red_text("[-]")} Error while running ExtensiveRoleCheck.py: {stderr.decode("utf-8")}')
+                print(f'{self.red_text("[-]")} Error while running {self.cyan_text("ExtensiveRoleCheck.py")}: '
+                      f'{stderr.decode("utf-8")}')
                 print(f'{self.cyan_text("[*]")} Ensure all files that the script reads are sane. '
                       f'Perhaps your role does not have enough permissions to get Roles, RoleBindings, ClusterRoles, '
                       f'ClusterRoleBindings, or Pods')
@@ -880,40 +908,49 @@ class Kubenumerate:
             with open(f'{role_check_out_path}', "w") as f:
                 f.write(stderr.decode("utf-8"))
                 f.write(stdout.decode("utf-8"))
-                print(f'{self.green_text("[+]")} Done! ExtensiveRoleCheck.py output successfully saved to '
-                      f'{role_check_out_path}')
+                print(f'{self.green_text("[+]")} Done! {self.cyan_text("ExtensiveRoleCheck.py")} output successfully '
+                      f'saved to {role_check_out_path}')
         except Exception as e:
             print(f'{self.red_text("[-]")} Error detected while launching `python3 ExtensiveRoleCheck.py`: {e}')
 
     def run_kubiscan(self):
         """Run KubiScan if connected to the cluster"""
-        try:
-            command = f"{self.py_bin} {self.kubiscan_py} -a".split(" ")
-            process = subprocess.run(command, check=True, capture_output=True, text=True)
+        if self.args.kubeconfig is not None:
+            self.kubiscan_py = f'{self.kubiscan_py} -co {self.args.kubeconfig}'
 
-            with open(f"{self.out_path}kubiscan_out", "w") as output_kubiscan_file:
-                output_kubiscan_file.write(process.stdout)
+        try:
+            command = f"python3 {self.kubiscan_py} -a".split(" ")
+            process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            stdout, stderr = process.communicate()
+
+            if "CRITICAL" in stdout:
+                self.sus_rbac = True
+            with open(f"{self.out_path}kubiscan.out", "w") as output_kubiscan_file:
+                output_kubiscan_file.write(stdout)
             if self.verbosity > 0:
-                print(f'{self.green_text("[+]")} Done. KubiScan output saved to '
-                      f'{self.cyan_text(output_kubiscan_file)}')
+                print(f'{self.green_text("[+]")} Done. {self.cyan_text("KubiScan")} output saved to '
+                      f'{self.yellow_text(self.out_path + "kubiscan.out")}')
         except Exception as e:
-            print(f'{self.red_text("[-]")} Error while running KubiScan: {e}')
+            print(f'{self.red_text("[-]")} Error while running {self.cyan_text("Kubiscan")}: {e}')
 
     def kubernetes_version_check(self):
         """Check whether the cluster's version is outdated"""
-        print(f"{self.cyan_text('[*]')} Determining latest version of K8s from GitHub's API...")
+        print(f"{self.cyan_text('[*]')} Determining latest version of {self.cyan_text('K8s')} from "
+              f"{self.cyan_text('GitHub')}'s API...")
         if not self.cluster_version:
-            print(f'{self.red_text("[-]")} Skipping version check as kubectl could not fetch cluster\'s version')
+            print(f'{self.red_text("[-]")} Skipping version check as {self.cyan_text("kubectl")} could not fetch '
+                  f'cluster\'s version')
             return
 
         current_latest = self.fetch_latest_kubernetes_version()
         if not current_latest:
             print(f'{self.red_text("[-]")} This will now default to a hard-coded version ({self.kube_version}). '
-                  f'Although the developer tries to maintain Kubenumerate updated, you should ensure this version is '
-                  f'up-to-date, otherwise you might flag a false positive.')
+                  f'Although the developer tries to maintain {self.cyan_text("Kubenumerate")} updated, you should '
+                  f'ensure this version is up-to-date, otherwise you might flag a false positive.')
         else:
-            print(f'{self.green_text("[+]")} Successfully queried latest version of K8s: '
-                  f'{self.yellow_text(f"{self.kube_version}")}.')
+            print(f'{self.green_text("[+]")} Successfully queried latest version of {self.cyan_text("K8s")}: '
+                  f'{self.yellow_text(f"{self.kube_version}")}. Comparing against cluster\'s version '
+                  f'{self.yellow_text("v" + self.cluster_version)}.')
             self.kube_version = current_latest
 
         if Version(self.cluster_version) < Version(self.kube_version):
@@ -934,14 +971,20 @@ class Kubenumerate:
         return tag_name
 
     @staticmethod
-    def extract_version(text):
+    def extract_version(version_output):
         """Get cluster's version with RegEx even in case it's a weird string like 1.28.11-eks-ae83b80"""
+
+        server_version = ""
+        for line in version_output.decode("UTF-8").splitlines():
+            if "Server Version" in line:
+                server_version = line
+
         pattern = r'v?(\d+\.\d+\.\d+)'
-        match = re.search(pattern, text)
+        match = re.search(pattern, server_version)
         if match:
             return match.group(1)
 
-        print(f"Error: version not found in string {text}")
+        print(f"Error: version not found in string {version_output}")
         return None
 
     # Colour the terminal!
@@ -966,6 +1009,9 @@ class Kubenumerate:
 
         if self.verbosity > 0:
             print(f'{self.cyan_text("[*]")} Running kubeaudit, please wait...')
+
+        if self.args.kubeconfig is not None:
+            self.kubeaudit_bin = f'{self.kubeaudit_bin} --kubeconfig {self.args.kubeconfig}' #TODO: substitute for self.kubeconfig_path?
 
         command = f"{self.kubeaudit_bin} all -p json"
         process = subprocess.Popen(command.split(" "), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -1462,7 +1508,7 @@ class Kubenumerate:
                 writer
             )
             self.hardened = False
-            self.rbac_police = True
+            self.sus_rbac = True
         except KeyError:
             if self.verbosity > 1:
                 print(f'[{self.cyan_text("*")}] "NetworkPolicies - No deny" not detected')
@@ -1658,7 +1704,7 @@ class Kubenumerate:
                 df_privileged_nil,
                 writer
             )
-            self.rbac_police = True
+            self.sus_rbac = True
             self.privileged_flag = True
         except KeyError:
             if self.verbosity > 1:
@@ -1686,7 +1732,7 @@ class Kubenumerate:
                 df_privileged_true,
                 writer
             )
-            self.rbac_police = True
+            self.sus_rbac = True
             self.privileged_flag = True
         except KeyError:
             if self.verbosity > 1:
@@ -2055,12 +2101,12 @@ class Kubenumerate:
             print(f'\t{self.red_text("[!]")} CPU usage')
             issues_raised["limits_set"] = True
 
-        # Suggest using RBAC Police (implementing this in the future)
-        # TODO: change this with extensiveRoleCheck.py's parsed output
-        if self.rbac_police:
-            print(
-                f'{self.yellow_text("[!]")} Running RBAC Police next might be interesting...\n\t('
-                f'https://github.com/PaloAltoNetworks/rbac-police)')
+        # Suggest checking RBAC's output
+        if self.sus_rbac:
+            if self.args.dry_run:
+                print(f'\t{self.yellow_text("[!]")} Check ExtensiveRoleCheck\'s output')
+            else:
+                print(f'\t{self.yellow_text("[!]")} Check KubiScan\'s output provided at {self.out_path}kubiscan.out')
 
         with open("test_issues_dict.txt", "w") as f:
             f.write(str(issues_raised))
