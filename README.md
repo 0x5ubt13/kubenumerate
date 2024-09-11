@@ -1,11 +1,11 @@
 # Kubenumerate
 
-Enumerate your Kubernetes cluster with just 1 command :eyes:
+Enumerate your target Kubernetes cluster with just 1 command! :eyes:
 
 ## Motivation
 
 - Concerned about your Kubernetes cluster's security?  
-- Are you going to use tools like kubeaudit, kube-bench and trivy anyway?
+- Are you going to use tools like kubeaudit, kube-bench, and trivy anyway?
 - Do you want all done for you with one lazy command and exported to excel?
 
 Enter kubenumerate!
@@ -14,9 +14,11 @@ With just 1 command it will locate or install (with permission) all the necessar
 
 Currently included tools:
 - Kubeaudit (installing latest from brew cask)
-- Kube-bench (manually installing 0.7.3 from [GitHub: aquasecurity / kube-bench / releases](https://github.com/aquasecurity/kube-bench/releases))
+- Kube-bench (installing latest release from [GitHub: aquasecurity/kube-bench - releases](https://github.com/aquasecurity/kube-bench/releases))
 - Kubectl (installing latest from brew cask)
 - Trivy (installing latest from brew cask)
+- KubiScan (installing latest release from [GitHub: cyberark/KubiScan - releases](https://github.com/cyberark/KubiScan/releases))
+- ExtensiveRoleCheck.py (custom version included in the repo, thanks to [PalindromeLabs' fork](https://github.com/PalindromeLabs/kubernetes-rbac-audit) from the original [CyberArk's file](https://github.com/cyberark/kubernetes-rbac-audit)) 
 
 ## Usage
 
@@ -30,13 +32,13 @@ Currently included tools:
                |     |/  5. -----
                +-----+  6. -----
 	             Kubenumerate
-	          By 0x5ubt13 v1.1.0
+	          By 0x5ubt13 v1.2.0
 
     usage: kubenumerate.py [-h] [--cheatsheet] [--dry-run] [--excel-out EXCEL_OUT] [--kubeaudit-file KUBEAUDIT_FILE]
                        [--kubeconfig KUBECONFIG] [--namespace NAMESPACE] [--output OUTPUT] [--trivy-file TRIVY_FILE]
                        [--verbosity VERBOSITY]
 
-    Uses local kubeconfig file to launch kubeaudit, kube-bench, kubectl and trivy and parses all useful output to excel.
+    Uses local kubeconfig file to launch kubeaudit, kube-bench, kubectl, trivy, and KubiScan and parses all useful output to excel.
     
     options:
       -h, --help            show this help message and exit
