@@ -33,7 +33,7 @@ class Kubenumerate:
                  kube_version="v1.31.0", kubiscan_path="/tmp/kubiscan/", kubiscan_py="", limits=True, namespace='-A',
                  out_path="/tmp/kubenumerate_out/", pkl_recovery="", pods="", pods_file="", privesc=False,
                  privileged=False, py_bin="/usr/bin/python3", requisites=None, sus_rbac=False, trivy_bin="trivy",
-                 trivy_file="", verbosity=1, version="1.2.0", version_diff=0, vuln_image=False, wget_bin="wget"):
+                 trivy_file="", verbosity=1, version="1.2.1", version_diff=0, vuln_image=False, wget_bin="wget"):
         """Initialize attributes"""
 
         if requisites is None:
@@ -1965,7 +1965,6 @@ class Kubenumerate:
 
                         # Proceed scanning the image
                         scanned_images.append(image_name)
-                        highs, found_high_CVEs, crits, found_crit_CVEs = 0, [], 0, []
                         try:
                             if self.verbosity > 1:
                                 print(f"Scanning image {image_name}")
@@ -1973,14 +1972,19 @@ class Kubenumerate:
                             if vulnerabilities == "error":
                                 continue
 
+                            # Get number of CVEs
+                            highs, found_high_CVEs, crits, found_crit_CVEs = 0, [], 0, []
                             for result in vulnerabilities.get("Results", []):
                                 for vulnerability in result.get('Vulnerabilities', []):
+                                    vuln_id = vulnerability.get('VulnerabilityID')
                                     if "HIGH" in vulnerability.get('Severity'):
-                                        found_high_CVEs.append(vulnerability.get('VulnerabilityID'))
-                                        highs += 1
+                                        if vuln_id not in found_high_CVEs:
+                                            found_high_CVEs.append(vulnerability.get('VulnerabilityID'))
+                                            highs += 1
                                     if "CRITICAL" in vulnerability.get('Severity'):
-                                        found_crit_CVEs.append(vulnerability.get('VulnerabilityID'))
-                                        crits += 1
+                                        if vuln_id not in found_crit_CVEs:
+                                            found_crit_CVEs.append(vulnerability.get('VulnerabilityID'))
+                                            crits += 1
 
                             if highs > 0 or crits > 0:
                                 if self.verbosity > 1:
