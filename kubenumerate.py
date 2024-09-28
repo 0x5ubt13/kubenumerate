@@ -1008,7 +1008,7 @@ class Kubenumerate:
             print(f'{self.cyan_text("[*]")} Running kubeaudit, please wait...')
 
         if self.args.kubeconfig is not None:
-            self.kubeaudit_bin = f'{self.kubeaudit_bin} --kubeconfig {self.args.kubeconfig}' #TODO: substitute for self.kubeconfig_path?
+            self.kubeaudit_bin = f'{self.kubeaudit_bin} --kubeconfig {self.kubeconfig_path}'
 
         command = f"{self.kubeaudit_bin} all -p json"
         process = subprocess.Popen(command.split(" "), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -1037,6 +1037,7 @@ class Kubenumerate:
         #       try to find it
         #       if not found:
         #           user input -> please tell me where to look for the kube-bench binary
+        #   ... or use a different tool that isn't kube-bench because not realistically will this be called in a node
         kube_bench_config_flag = ""
         if self.kube_bench_bin == "/tmp/kube-bench/kube-bench":
             kube_bench_config_flag = "--config-dir /tmp/kube-bench/cfg/"
