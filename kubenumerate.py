@@ -861,14 +861,13 @@ class Kubenumerate:
         if self.verbosity >= 0:
             print(f'{self.green_text("[+]")} Done! All output successfully saved to {self.cyan_text(self.excel_file)}.')
 
+        # TODO: consider feasibility of including icekube
+
         # Run ExtensiveRoleCheck.py
         if self.verbosity > 0:
             print(
                 f'\n{self.cyan_text("[*]")} ----- Running RBAC checks, please wait... -----')
         self.check_roles()
-
-        # TODO: consider feasibility of including icekube
-
         # Finish by raising issues to the terminal
         self.raise_issues()
 
