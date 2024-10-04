@@ -861,6 +861,8 @@ class Kubenumerate:
                 f'\n{self.cyan_text("[*]")} ----- Running RBAC checks, please wait... -----')
         self.check_roles()
 
+        # TODO: consider feasibility of including icekube
+
         # Finish by raising issues to the terminal
         self.raise_issues()
 
