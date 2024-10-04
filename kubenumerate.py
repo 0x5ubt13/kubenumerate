@@ -33,7 +33,7 @@ class Kubenumerate:
                  kube_version="v1.31.0", kubiscan_path="/tmp/kubiscan/", kubiscan_py="", limits=True, namespace='-A',
                  out_path="/tmp/kubenumerate_out/", pkl_recovery="", pods="", pods_file="", privesc=False,
                  privileged=False, py_bin="/usr/bin/python3", requisites=None, sus_rbac=False, trivy_bin="trivy",
-                 trivy_file="", verbosity=1, version="1.2.0", version_diff=0, vuln_image=False, wget_bin="wget"):
+                 trivy_file="", verbosity=1, version="1.2.1", version_diff=0, vuln_image=False, wget_bin="wget"):
         """Initialize attributes"""
 
         if requisites is None:
@@ -348,7 +348,8 @@ class Kubenumerate:
                         file == "kube-bench")
                     # Make it executable
                     os.chmod(self.kube_bench_bin, 0o755)
-                # print("DEBUG DEV: kube-bench installed successfully")
+                if self.verbosity > 1:
+                    print("DEBUG DEV: kube-bench installed successfully")
             except Exception as e:
                 print(f"{self.red_text('[-]')} It was not possible to download kube-bench: {e}")
             return
@@ -360,14 +361,16 @@ class Kubenumerate:
         if tool == "kubiscan":
             try:
                 downloaded_zipball = self.fetch_and_download_latest_version_from_github("kubiscan")
-                # print("DEBUG DEV: kubiscan downloaded successfully")
+                if self.verbosity > 1:
+                    print("DEBUG DEV: kubiscan downloaded successfully")
 
                 kubiscan_path = "/tmp/kubiscan/"
                 # Extract the tool
                 try:
                     with zipfile.ZipFile(downloaded_zipball, 'r') as zip_ref:
                         zip_ref.extractall(kubiscan_path)
-                    # print(f"DEV DEBUG: {tool}'s repository downloaded and extracted successfully.")
+                    if self.verbosity > 1:
+                        print(f"DEV DEBUG: {tool}'s repository downloaded and extracted successfully.")
                 except Exception as e:
                     print(f'{self.red_text("[-]")} Error while extracting {tool}: {e}')
                     sys.exit(1)
@@ -376,7 +379,8 @@ class Kubenumerate:
                 for root, dirs, files in os.walk(kubiscan_path):
                     if "KubiScan.py" in files:
                         self.kubiscan_py = os.path.join(root, "KubiScan.py")
-                # print("DEBUG DEV: kubiscan path:", self.kubiscan_py)
+                if self.verbosity > 1:
+                    print("DEBUG DEV: kubiscan path:", self.kubiscan_py)
             except Exception as e:
                 print(f"{self.red_text('[-]')} It was not possible to download kubiscan: {e}")
             return
@@ -428,7 +432,8 @@ class Kubenumerate:
             latest_release_data = response.json()
 
             download_url = get_download_url(tool, latest_release_data)
-            # print("DEBUG DEV: download_url", download_url)
+            if self.verbosity > 1:
+                print("DEBUG DEV: download_url", download_url)
 
             # Download the file
             subprocess.run(f"{self.wget_bin} -P {tool_tmp_dir} {download_url} -O {tool_full_path}".split(" "))
@@ -691,7 +696,9 @@ class Kubenumerate:
                 # Save the output to its own file
                 contents = json.loads(stdout.decode("utf-8"))
                 if not contents["items"]:
-                    # print(f'{self.cyan_text("[*]")} DEBUG (DEV branch): not saving file {resource} because it came up empty')
+                    if self.verbosity > 1:
+                        print(f'{self.cyan_text("[*]")} DEBUG (DEV branch): not saving '
+                              f'file {resource} because it came up empty')
                     skipped += 1
                     continue
 
@@ -819,7 +826,7 @@ class Kubenumerate:
                     # Make dataframe for Kubeaudit
                     kubeaudit_df = pd.read_json(kubeaudit_f, lines=True)
 
-                    # Run all kubeaudit methods
+                    # Run all Kubeaudit methods
                     self.apparmor(kubeaudit_df, writer)
                     self.asat(kubeaudit_df, writer)
                     self.caps(kubeaudit_df, writer)
@@ -846,7 +853,7 @@ class Kubenumerate:
                     # Parse all pods for Trivy
                     self.parse_all_pods()
 
-                    # Run trivy methods
+                    # Run Trivy methods
                     self.trivy_parser(writer)
                     if self.verbosity > 0:
                         print(f'{self.green_text("[+]")} {self.cyan_text("Trivy")} successfully parsed.')
@@ -855,7 +862,6 @@ class Kubenumerate:
             print(f'{self.green_text("[+]")} Done! All output successfully saved to {self.cyan_text(self.excel_file)}.')
 
         # Run ExtensiveRoleCheck.py
-        # print(f'{self.cyan_text("[*]")} Extra: including ExtensiveRoleCheck.py and KubiScan to Kubenumerate (dev branch only)')
         if self.verbosity > 0:
             print(
                 f'\n{self.cyan_text("[*]")} ----- Running RBAC checks, please wait... -----')
@@ -886,18 +892,9 @@ class Kubenumerate:
                         " --rolebindings rolebindings.json"
                         " --clusterrolebindings clusterrolebindings.json"
                         " --pods pods.json").split(" ")
-            # else:
-            #     command = (f"python3 {extensive_role_check_file_path}"
-            #                f" --clusterRole {self.kubectl_path}clusterroles.json"
-            #                f" --role {self.kubectl_path}roles.json"
-            #                f" --rolebindings {self.kubectl_path}rolebindings.json"
-            #                f" --clusterrolebindings {self.kubectl_path}clusterrolebindings.json"
-            #                f" --pods {self.kubectl_path}pods.json").split(" ")
             process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             stdout, stderr = process.communicate()
 
-            # TODO: parse error output and print what is the exact cause
-            # TODO: check that all mentioned files are bigger than 0, otherwise flag to user
             if len(stderr) > 0:
                 print(f'{self.red_text("[-]")} Error while running {self.cyan_text("ExtensiveRoleCheck.py")}: '
                       f'{stderr.decode("utf-8")}')
@@ -1013,7 +1010,7 @@ class Kubenumerate:
             print(f'{self.cyan_text("[*]")} Running kubeaudit, please wait...')
 
         if self.args.kubeconfig is not None:
-            self.kubeaudit_bin = f'{self.kubeaudit_bin} --kubeconfig {self.args.kubeconfig}' #TODO: substitute for self.kubeconfig_path?
+            self.kubeaudit_bin = f'{self.kubeaudit_bin} --kubeconfig {self.kubeconfig_path}'
 
         command = f"{self.kubeaudit_bin} all -p json"
         process = subprocess.Popen(command.split(" "), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -1042,6 +1039,7 @@ class Kubenumerate:
         #       try to find it
         #       if not found:
         #           user input -> please tell me where to look for the kube-bench binary
+        #   ... or use a different tool that isn't kube-bench because not realistically will this be called in a node
         kube_bench_config_flag = ""
         if self.kube_bench_bin == "/tmp/kube-bench/kube-bench":
             kube_bench_config_flag = "--config-dir /tmp/kube-bench/cfg/"
@@ -1970,7 +1968,6 @@ class Kubenumerate:
 
                         # Proceed scanning the image
                         scanned_images.append(image_name)
-                        highs, found_high_CVEs, crits, found_crit_CVEs = 0, [], 0, []
                         try:
                             if self.verbosity > 1:
                                 print(f"Scanning image {image_name}")
@@ -1978,14 +1975,19 @@ class Kubenumerate:
                             if vulnerabilities == "error":
                                 continue
 
+                            # Get number of CVEs
+                            highs, found_high_CVEs, crits, found_crit_CVEs = 0, [], 0, []
                             for result in vulnerabilities.get("Results", []):
                                 for vulnerability in result.get('Vulnerabilities', []):
+                                    vuln_id = vulnerability.get('VulnerabilityID')
                                     if "HIGH" in vulnerability.get('Severity'):
-                                        found_high_CVEs.append(vulnerability.get('VulnerabilityID'))
-                                        highs += 1
+                                        if vuln_id not in found_high_CVEs:
+                                            found_high_CVEs.append(vulnerability.get('VulnerabilityID'))
+                                            highs += 1
                                     if "CRITICAL" in vulnerability.get('Severity'):
-                                        found_crit_CVEs.append(vulnerability.get('VulnerabilityID'))
-                                        crits += 1
+                                        if vuln_id not in found_crit_CVEs:
+                                            found_crit_CVEs.append(vulnerability.get('VulnerabilityID'))
+                                            crits += 1
 
                             if highs > 0 or crits > 0:
                                 if self.verbosity > 1:
