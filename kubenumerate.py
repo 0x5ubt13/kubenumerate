@@ -143,6 +143,41 @@ class Kubenumerate:
     def check_requisites(self):
         """Check for kubeaudit, kube-bench, trivy, etc. Shout if they're not present in the system"""
 
+        # Detect if script is being run in macOS, Linux or other
+        try:
+            uname_cmd = subprocess.run(['uname'], capture_output=True, text=True)
+            uname = uname_cmd.stdout.lower().strip()
+            match uname:
+                case "darwin":
+                    print("DEBUG DEV: macOS detected.")
+                    # TODO: what should change if this is run from a macbook
+                    self.host_os = "macOS"
+                    # Check whether AMD or ARM
+                    arch_cmd = subprocess.run(['uname', '-m'], capture_output=True, text=True)
+                    arch = arch_cmd.stdout.strip().lower()
+                    if arch == "x86_64":
+                        self.host_arch = "darwin_amd64"
+                    elif arch == "arm64":
+                        self.host_arch = "darwin_arm64"
+                    else:
+                        print(f"Error: macOS architecture {arch} not compatible")
+                case "linux":
+                    if self.verbosity > 1:
+                        print("DEBUG DEV: Linux detected. All good")
+                    self.host_os = "Linux"
+                case "cygwin_nt" | "msys_nt" | "freebsd":
+                    print(f'OS detected as {uname}). Currently, {self.cyan_text("Kubenumerate")} does not '
+                          f'support this OS. Please use either macOS or Linux.')
+                case _:
+                    print("OS not detected. Please run this tool from macOS or Linux")
+                    exit(80)
+        except Exception as e:
+            print(f'{self.red_text("[-]")} Error detected when trying to run {self.cyan_text("uname")}: {e}\n Please '
+                  f'use macOS or Linux as other OS is not currently supported by {self.cyan_text("Kubenumerate")}')
+            exit(80)
+
+        print(f"DEBUG DEV:\n\tself.host_arch: {self.host_arch}\n\tself.host_os: {self.host_os}")
+
         # Kubeaudit
         if not shutil.which("kubeaudit"):
             self.kubeaudit_bin = self.pathfinder("kubeaudit")
@@ -533,38 +568,6 @@ class Kubenumerate:
 
     def global_checks(self):
         """Perform other necessary checks to ensure a correct execution"""
-
-        # Detect if script is being run in macOS, Linux or other
-        try:
-            uname = subprocess.run(['uname'], capture_output=True, text=True)
-            match uname.stdout.lower().strip():
-                case "darwin":
-                    if self.verbosity > 1:
-                        print("DEBUG DEV: macOS detected.")
-                    # TODO: what should change if this is run from a macbook
-                    self.host_os = "macOS"
-                    # Check whether AMD or ARM
-                    arch = subprocess.run(['uname', '-m'], capture_output=True, text=True)
-                    if arch.stdout.lower().strip() == "x86_64":
-                        self.host_arch = "darwin_amd64"
-                    elif arch.stdout.lower().strip() == "arm64":
-                        self.host_arch = "darwin_arm64"
-                    else:
-                        print(f"Error: macOS architecture {arch.stdout} not compatible")
-                case "linux":
-                    if self.verbosity > 1:
-                        print("DEBUG DEV: Linux detected. All good")
-                    self.host_os = "Linux"
-                case "cygwin_nt" | "msys_nt" | "freebsd":
-                    print(f'OS detected as {uname.stdout}). Currently, {self.cyan_text("Kubenumerate")} does not '
-                          f'support this OS. Please use either macOS or Linux.')
-                case _:
-                    print("OS not detected. Please run this tool from macOS or Linux")
-                    exit(80)
-        except Exception as e:
-            print(f'{self.red_text("[-]")} Error detected when trying to run {self.cyan_text("uname")}: {e}\n Please '
-                  f'use macOS or Linux as other OS is not currently supported by {self.cyan_text("Kubenumerate")}')
-            exit(80)
 
         # Use args if passed
         if self.args.output is not None:
