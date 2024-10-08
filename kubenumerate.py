@@ -305,51 +305,52 @@ class Kubenumerate:
         """Ask the user for permission to install needed software in the system"""
 
         # TODO: trying to write this function so that it's not an eyesore
-        # Dictionary to help determine if tool needs Brew message
-        # tool_map = {
-        #     "jq": {"inst": self.inst_jq, "brew_msg": True},
-        #     "kubeaudit": {"inst": self.inst_kubeaudit, "brew_msg": True},
-        #     "kube-bench": {"inst": self.inst_kubebench, "brew_msg": False},
-        #     "kubectl": {"inst": self.inst_kubectl, "brew_msg": True},
-        #     "trivy": {"inst": self.inst_trivy, "brew_msg": True},
-        #     "kubiscan": {"inst": self.inst_kubiscan, "brew_msg": False},
-        #     "wget": {"inst": self.inst_wget, "brew_msg": True}
-        # }
-        # print_brew_message = False
-        #
-        # print(f'{self.cyan_text("[*]")} The following tools are needed:')
-        # for tool in self.requisites:
-        #     if tool_map["inst"]:
-        #         setattr(self, tool_map[tool], True)
-        #         if tool_map[tool]:
-        #             print_brew_message = True
-        #
-        #     print(f'\t- {self.yellow_text(f"{tool}")}')
-
+        # Dictionary to map tools to their attributes
+        tool_attribute_mapping = {
+            "jq": "inst_jq",
+            "kubeaudit": "inst_kubeaudit",
+            "kube-bench": "inst_kubebench",
+            "kubectl": "inst_kubectl",
+            "trivy": "inst_trivy",
+            "kubiscan": "inst_kubiscan",
+            "wget": "inst_wget"
+        }
         print_brew_message = False
+
         print(f'{self.cyan_text("[*]")} The following tools are needed:')
         for tool in self.requisites:
-            if tool == "jq":
-                self.inst_jq = True
-                print_brew_message = True
-            elif tool == "kubeaudit":
-                self.inst_kubeaudit = True
-                print_brew_message = True
-            elif tool == "kube-bench":
-                self.inst_kubebench = True
-            elif tool == "kubectl":
-                self.inst_kubectl = True
-                print_brew_message = True
-            elif tool == "trivy":
-                self.inst_trivy = True
-                print_brew_message = True
-            elif tool == "kubiscan":
-                self.inst_kubiscan = True
-            elif tool == "wget":
-                self.inst_wget = True
-                print_brew_message = True
+            if tool in tool_attribute_mapping:
+                setattr(self, tool_attribute_mapping[tool], True)  # Elegant hack
+                if tool is not "kube-bench" and tool is not "kubiscan" and not print_brew_message:
+                    print_brew_message = True
 
             print(f'\t- {self.yellow_text(f"{tool}")}')
+
+        # Yuck,
+        # print_brew_message = False
+        # print(f'{self.cyan_text("[*]")} The following tools are needed:')
+        # for tool in self.requisites:
+        #     if tool == "jq":
+        #         self.inst_jq = True
+        #         print_brew_message = True
+        #     elif tool == "kubeaudit":
+        #         self.inst_kubeaudit = True
+        #         print_brew_message = True
+        #     elif tool == "kube-bench":
+        #         self.inst_kubebench = True
+        #     elif tool == "kubectl":
+        #         self.inst_kubectl = True
+        #         print_brew_message = True
+        #     elif tool == "trivy":
+        #         self.inst_trivy = True
+        #         print_brew_message = True
+        #     elif tool == "kubiscan":
+        #         self.inst_kubiscan = True
+        #     elif tool == "wget":
+        #         self.inst_wget = True
+        #         print_brew_message = True
+        #
+        #     print(f'\t- {self.yellow_text(f"{tool}")}')
 
         if print_brew_message:
             print(f'{self.yellow_text("[!]")} {self.cyan_text("Brew")} (https://brew.sh), will be used as the '
