@@ -321,7 +321,7 @@ class Kubenumerate:
         for tool in self.requisites:
             if tool in tool_attribute_mapping:
                 setattr(self, tool_attribute_mapping[tool], True)  # Elegant hack
-                if tool is not "kube-bench" and tool is not "kubiscan" and not print_brew_message:
+                if tool != "kube-bench" and tool != "kubiscan" and not print_brew_message:
                     print_brew_message = True
 
             print(f'\t- {self.yellow_text(f"{tool}")}')
