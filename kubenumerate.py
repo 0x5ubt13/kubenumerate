@@ -494,14 +494,18 @@ class Kubenumerate:
                     if self.host_arch == "darwin_arm64":
                         return next(asset['browser_download_url']
                                     for asset in latest['assets'] if 'darwin_arm64.tar.gz' in asset['name'])
-
             if target == "kubiscan":
                 # Python package, simply get the zipball
                 return latest['zipball_url']
 
         try:
             tool_tmp_dir, repo, tool_full_path = f'/tmp/{tool}/', '', ''
-            os.makedirs(tool_tmp_dir, exist_ok=True)
+            try:
+                os.makedirs(tool_tmp_dir, exist_ok=True)
+            except PermissionError as e:
+                print(f'{self.red_text("[-]")} Permission error while creating tmp dir: {e}')
+            except Exception as e:
+                print(f'{self.red_text("[-]")} Error while creating tmp dir: {e}')
 
             if tool == "kube-bench":
                 repo = "aquasecurity/kube-bench"
@@ -517,7 +521,8 @@ class Kubenumerate:
             latest_release_data = response.json()
 
             download_url = get_download_url(tool, latest_release_data)
-            if self.verbosity > 1:
+            if self.verbosity > 0:
+                print("DEBUG DEV: latest_release_data", latest_release_data)
                 print("DEBUG DEV: download_url", download_url)
 
             # Download the file
