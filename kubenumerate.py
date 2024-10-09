@@ -12,6 +12,7 @@ import subprocess
 import sys
 import tarfile
 import time
+import platform
 import yaml
 import zipfile
 from datetime import datetime
@@ -26,15 +27,15 @@ class Kubenumerate:
 
     def __init__(self, args="", automount=False, brew_bin="", cis=False,
                  cluster_version="", date=datetime.now().strftime("%b%y"), depr_api=False, dry_run=False,
-                 excel_file="kubenumerate_results_v1_0.xlsx", hardened=True, host_os="", host_arch="", inst_jq=False,
-                 inst_kubeaudit=False, inst_kubebench=False, inst_kubectl=False, inst_kubiscan=False, inst_trivy=False,
-                 inst_wget=False, install=False, jq_bin="jq", kubeaudit_bin="kubeaudit", kubeaudit_file="",
-                 kube_bench_bin="kube-bench", kube_bench_file="", kubectl_bin="kubectl",
-                 kubectl_path="/tmp/kubenumerate_out/kubectl_output/", kube_version="v1.31.0",
+                 excel_file="kubenumerate_results_v1_0.xlsx", home_dir=Path.home(), hardened=True,
+                 host_os=platform.system(), host_arch="", inst_jq=False, inst_kubeaudit=False, inst_kubebench=False,
+                 inst_kubectl=False, inst_kubiscan=False, inst_trivy=False, inst_wget=False, install=False, jq_bin="",
+                 kubeaudit_bin="", kubeaudit_file="", kube_bench_bin="", kube_bench_file="", kubeconfig_path="",
+                 kubectl_bin="kubectl", kubectl_path="/tmp/kubenumerate_out/kubectl_output/", kube_version="v1.31.0",
                  kubiscan_path="/tmp/kubiscan/", kubiscan_py="", limits=True, namespace='-A',
                  out_path="/tmp/kubenumerate_out/", pkl_recovery="", pods="", pods_file="", privesc=False,
-                 privileged=False, py_bin="/usr/bin/python3", requisites=None, sus_rbac=False, trivy_bin="trivy",
-                 trivy_file="", verbosity=1, version="1.2.2", version_diff=0, vuln_image=False, wget_bin="wget"):
+                 privileged=False, py_bin="/usr/bin/python3", requisites=None, sus_rbac=False, trivy_bin="",
+                 trivy_file="", verbosity=1, version="1.2.2", version_diff=0, vuln_image=False, wget_bin=""):
         """Initialize attributes"""
 
         if requisites is None:
@@ -50,6 +51,7 @@ class Kubenumerate:
         self.dry_run = dry_run
         self.excel_file = excel_file
         self.hardened = hardened
+        self.home_dir = home_dir
         self.host_os = host_os
         self.host_arch = host_arch
         self.inst_jq = inst_jq
@@ -65,7 +67,7 @@ class Kubenumerate:
         self.kubeaudit_file = kubeaudit_file
         self.kube_bench_bin = kube_bench_bin
         self.kube_bench_file = kube_bench_file
-        self.kubeconfig_path = f"/home/{user}/.kube/config"
+        self.kubeconfig_path = kubeconfig_path
         self.kubectl_bin = kubectl_bin
         self.kubectl_path = kubectl_path
         self.kube_version = kube_version
@@ -93,6 +95,7 @@ class Kubenumerate:
     def parse_args(self):
         """Parse args and return them"""
 
+        # TODO: make no colour flag for those using a light mode terminal. Then in colour methods simply use black
         parser = argparse.ArgumentParser(
             description='Uses local kubeconfig file to launch kubeaudit, kube-bench, kubectl, trivy and KubiScan '
                         'and parses all useful output to excel.')
@@ -140,47 +143,52 @@ class Kubenumerate:
             default=1)
         self.args = parser.parse_args()
 
+    def check_os(self):
+        """Detect if script is being run in macOS, Linux or other, and its architecture"""
+        class ArchitectureNotSupported(Exception):
+            def __init__(self, message, supported_architectures=None):
+                self.message = message
+                self.supported_architectures = supported_architectures or ['Linux amd64', 'macOS amd64', 'macOS arm64']
+                super().__init__(self.message)
+
+            def get_currently_supported_architectures(self):
+                return "\n\t".join(f"- {supported_arch}" for supported_arch in self.supported_architectures)
+
+        try:
+            arch = platform.machine().lower()
+            match self.host_os:
+                case "Darwin":
+                    match arch:
+                        case "x86_64":
+                            self.host_arch = "darwin_amd64"
+                        case "arm64":
+                            self.host_arch = "darwin_arm64"
+                        case _:
+                            raise ArchitectureNotSupported(f"macOS - {self.host_arch} not supported.")
+                case "Linux":
+                    if arch != "x86_64":
+                        raise ArchitectureNotSupported(f"Linux {self.host_arch} architecture not currently supported.")
+                    self.host_arch = "linux_amd64"
+                case "Windows" | "FreeBSD" | "OpenBSD" | _:
+                    raise ArchitectureNotSupported(f"OS {self.host_os} not supported.")
+        except ArchitectureNotSupported as e:
+            print(f'{self.red_text("[-]")} Architecture error: {e}\nCurrently, {self.cyan_text("Kubenumerate")} '
+                  f'supports the following OS and architectures: {e.get_currently_supported_architectures()}')
+            exit(80)
+        except Exception as e:
+            print(f'{self.red_text("[-]")} Error detected when trying to establish the system\'s architecture: {e}\n'
+                  f'Currently supported OSs and architectures:\n\t- Linux amd64\n\t- macOS amd64\n\t- macOS arm64")'
+                  f'{self.cyan_text("Kubenumerate")}')
+            exit(80)
+
     def check_requisites(self):
         """Check for kubeaudit, kube-bench, trivy, etc. Shout if they're not present in the system"""
 
-        # Detect if script is being run in macOS, Linux or other
-        try:
-            uname_cmd = subprocess.run(['uname'], capture_output=True, text=True)
-            uname = uname_cmd.stdout.lower().strip()
-            match uname:
-                case "darwin":
-                    print("DEBUG DEV: macOS detected.")
-                    # TODO: what should change if this is run from a macbook
-                    self.host_os = "macOS"
-                    # Check whether AMD or ARM
-                    arch_cmd = subprocess.run(['uname', '-m'], capture_output=True, text=True)
-                    arch = arch_cmd.stdout.strip().lower()
-                    if arch == "x86_64":
-                        self.host_arch = "darwin_amd64"
-                    elif arch == "arm64":
-                        self.host_arch = "darwin_arm64"
-                    else:
-                        print(f"Error: macOS architecture {arch} not compatible")
-                case "linux":
-                    if self.verbosity > 1:
-                        print("DEBUG DEV: Linux detected. All good")
-                    self.host_os = "Linux"
-                case "cygwin_nt" | "msys_nt" | "freebsd":
-                    print(f'OS detected as {uname}). Currently, {self.cyan_text("Kubenumerate")} does not '
-                          f'support this OS. Please use either macOS or Linux.')
-                case _:
-                    print("OS not detected. Please run this tool from macOS or Linux")
-                    exit(80)
-        except Exception as e:
-            print(f'{self.red_text("[-]")} Error detected when trying to run {self.cyan_text("uname")}: {e}\n Please '
-                  f'use macOS or Linux as other OS is not currently supported by {self.cyan_text("Kubenumerate")}')
-            exit(80)
-
-        print(f"DEBUG DEV:\n\tself.host_arch: {self.host_arch}\n\tself.host_os: {self.host_os}")
+        self.check_os()
 
         # Kubeaudit
         if not shutil.which("kubeaudit"):
-            self.kubeaudit_bin = self.pathfinder("kubeaudit")
+            self.kubeaudit_bin = self.brew_pathfinder("kubeaudit")
             if self.kubeaudit_bin is None:
                 self.requisites.append("kubeaudit")
         else:
@@ -197,7 +205,7 @@ class Kubenumerate:
 
         # Kubectl
         if not shutil.which("kubectl"):
-            self.kubectl_bin = self.pathfinder("kubectl")
+            self.kubectl_bin = self.brew_pathfinder("kubectl")
             if self.kubectl_bin is None:
                 self.requisites.append("kubectl")
         else:
@@ -205,7 +213,7 @@ class Kubenumerate:
 
         # Trivy
         if not shutil.which("trivy"):
-            self.trivy_bin = self.pathfinder("trivy")
+            self.trivy_bin = self.brew_pathfinder("trivy")
             if self.trivy_bin is None:
                 self.requisites.append("trivy")
         else:
@@ -219,7 +227,7 @@ class Kubenumerate:
         # Wget
         if not shutil.which("wget"):
             if not shutil.which("wget"):
-                self.wget_bin = self.pathfinder("wget")
+                self.wget_bin = self.brew_pathfinder("wget")
                 if self.wget_bin is None:
                     self.requisites.append("wget")
         else:
@@ -228,7 +236,7 @@ class Kubenumerate:
         # Jq
         if not shutil.which("jq"):
             if not shutil.which("jq"):
-                self.jq_bin = self.pathfinder("jq")
+                self.jq_bin = self.brew_pathfinder("jq")
                 if self.jq_bin is None:
                     self.requisites.append("jq")
         else:
@@ -239,11 +247,15 @@ class Kubenumerate:
         else:
             print(f'{self.green_text("[+]")} All necessary software successfully detected in the system.')
 
+    # TODO: below function is a quick hack. It can be optimised by creating self.brew_path and looking for it only once
     @staticmethod
-    def pathfinder(tool):
-        paths = ['/home/linuxbrew/.linuxbrew/bin',
-                 '/usr/local/bin',
-                 '/opt/homebrew/bin']
+    def brew_pathfinder(tool):
+        """Find brew bin directory and tool installed in it"""
+
+        paths = [f'/home/linuxbrew/.linuxbrew/bin',
+                 f'{Path.home()}/.linuxbrew/bin',
+                 f'/usr/local/bin',
+                 f'/opt/homebrew/bin']
         match tool:
             case "kubeaudit":
                 return next((f'{path}/kubeaudit' for path in paths if os.path.isfile(f'{path}/kubeaudit')), None)
@@ -265,10 +277,10 @@ class Kubenumerate:
             if not self.install:
                 print(f'{self.red_text("[-]")} Please install kubeaudit: https://github.com/Shopify/kubeaudit')
             else:
-                if self.pathfinder("kubeaudit") is None:
+                if self.brew_pathfinder("kubeaudit") is None:
                     self.install_tool("kubeaudit")
                 else:
-                    self.kubeaudit_bin = self.pathfinder("kubeaudit")
+                    self.kubeaudit_bin = self.brew_pathfinder("kubeaudit")
 
         # Install kube-bench
         if self.inst_kubebench:
@@ -285,40 +297,40 @@ class Kubenumerate:
             if not self.install:
                 print(f'{self.red_text("[-]")} Please install kubectl: https://kubernetes.io/docs/tasks/tools/#kubectl')
             else:
-                if self.pathfinder("kubectl") is None:
+                if self.brew_pathfinder("kubectl") is None:
                     self.install_tool("kubectl")
                 else:
-                    self.kubectl_bin = self.pathfinder("kubectl")
+                    self.kubectl_bin = self.brew_pathfinder("kubectl")
 
         # Install Trivy
         if self.inst_trivy:
             if not self.install:
                 print(f'{self.red_text("[-]")} Please install trivy: https://github.com/aquasecurity/trivy')
             else:
-                if self.pathfinder("trivy") is None:
+                if self.brew_pathfinder("trivy") is None:
                     self.install_tool("trivy")
                 else:
-                    self.trivy_bin = self.pathfinder("trivy")
+                    self.trivy_bin = self.brew_pathfinder("trivy")
 
         # Install wget
         if self.inst_wget:
             if not self.install:
                 print(f'{self.red_text("[-]")} Please install wget via apt, brew, or your distro\'s package manager')
             else:
-                if self.pathfinder("wget") is None:
+                if self.brew_pathfinder("wget") is None:
                     self.install_tool("wget")
                 else:
-                    self.wget_bin = self.pathfinder("wget")
+                    self.wget_bin = self.brew_pathfinder("wget")
 
         # Install jq
         if self.inst_jq:
             if not self.install:
                 print(f'{self.red_text("[-]")} Please install jq: https://github.com/jqlang/jq')
             else:
-                if self.pathfinder("jq") is None:
+                if self.brew_pathfinder("jq") is None:
                     self.install_tool("jq")
                 else:
-                    self.jq_bin = self.pathfinder("jq")
+                    self.jq_bin = self.brew_pathfinder("jq")
 
         # Install kubiscan
         if self.inst_kubiscan:
@@ -417,6 +429,7 @@ class Kubenumerate:
                 break
 
         if not shutil.which("brew"):
+            # TODO: plug here the pathfinder result, or use it there
             if not os.path.isfile("/home/linuxbrew/.linuxbrew/bin/brew"):
                 if self.install:
                     self.install_tool("brew")
@@ -522,13 +535,12 @@ class Kubenumerate:
                 if self.host_os == "Linux":
                     return next(asset['browser_download_url']
                                 for asset in latest['assets'] if 'linux_amd64.tar.gz' in asset['name'])
-                if self.host_os == "macOS":
-                    if self.host_arch == "darwin_amd64":
+                if self.host_arch == "darwin_amd64":
                         return next(asset['browser_download_url']
                                     for asset in latest['assets'] if 'darwin_amd64.tar.gz' in asset['name'])
-                    if self.host_arch == "darwin_arm64":
-                        return next(asset['browser_download_url']
-                                    for asset in latest['assets'] if 'darwin_arm64.tar.gz' in asset['name'])
+                if self.host_arch == "darwin_arm64":
+                    return next(asset['browser_download_url']
+                                for asset in latest['assets'] if 'darwin_arm64.tar.gz' in asset['name'])
             if target == "kubiscan":
                 # Python package, simply get the zipball
                 return latest['zipball_url']
@@ -642,6 +654,12 @@ class Kubenumerate:
             # Check which kubeconfig file will be used and print current context
             if self.args.kubeconfig is not None:
                 self.kubeconfig_path = self.args.kubeconfig
+
+            # OS-agnostic way of checking the home dir for .kube/config
+            if self.kubeconfig_path is None:
+                common_kubeconfig_location = f"{Path.home()}/.kube/config"
+                if os.path.isfile(common_kubeconfig_location):
+                    self.kubeconfig_path = common_kubeconfig_location
 
             try:
                 with open(self.kubeconfig_path, 'r') as kubeconfig_file:
