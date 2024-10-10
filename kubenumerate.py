@@ -25,16 +25,16 @@ class Kubenumerate:
         PRs: https://github.com/0x5ubt13/kubenumerate
     """
 
-    def __init__(self, args="", automount=False, brew_bin="", cis=False,
+    def __init__(self, args="", automount=False, brew_bin="", brew_path="", cis=False,
                  cluster_version="", date=datetime.now().strftime("%b%y"), depr_api=False, dry_run=False,
                  excel_file="kubenumerate_results_v1_0.xlsx", home_dir=Path.home(), hardened=True,
                  host_os=platform.system(), host_arch="", inst_jq=False, inst_kubeaudit=False, inst_kubebench=False,
                  inst_kubectl=False, inst_kubiscan=False, inst_trivy=False, inst_wget=False, install=False, jq_bin="",
-                 kubeaudit_bin="", kubeaudit_file="", kube_bench_bin="", kube_bench_file="", kubeconfig_path="",
+                 kubeaudit_bin="", kubeaudit_file="", kube_bench_bin="", kube_bench_file="", kubeconfig_path=None,
                  kubectl_bin="kubectl", kubectl_path="/tmp/kubenumerate_out/kubectl_output/", kube_version="v1.31.0",
                  kubiscan_path="/tmp/kubiscan/", kubiscan_py="", limits=True, namespace='-A',
                  out_path="/tmp/kubenumerate_out/", pkl_recovery="", pods="", pods_file="", privesc=False,
-                 privileged=False, py_bin="/usr/bin/python3", requisites=None, sus_rbac=False, trivy_bin="",
+                 privileged=False, py_bin=sys.executable, requisites=None, sus_rbac=False, trivy_bin="",
                  trivy_file="", verbosity=1, version="1.2.2", version_diff=0, vuln_image=False, wget_bin=""):
         """Initialize attributes"""
 
@@ -44,6 +44,7 @@ class Kubenumerate:
         self.args = args
         self.automount = automount
         self.brew_bin = brew_bin
+        self.brew_path = brew_path
         self.cis_detected = cis
         self.cluster_version = cluster_version
         self.date = date
@@ -181,43 +182,44 @@ class Kubenumerate:
                   f'{self.cyan_text("Kubenumerate")}')
             exit(80)
 
+    def brew_pathfinder(self):
+        """Find brew bin directory"""
+
+        paths = [f'/home/linuxbrew/.linuxbrew/bin', f'{Path.home()}/.linuxbrew/bin', f'/usr/local/bin',
+                 f'/opt/homebrew/bin']
+
+        self.brew_path = next((path for path in paths if os.path.exists(path)), None)
+        self.brew_bin = f'{self.brew_path}/brew' if os.path.exists(f'{self.brew_path}/brew') else None
+
     def check_requisites(self):
         """Check for kubeaudit, kube-bench, trivy, etc. Shout if they're not present in the system"""
 
         self.check_os()
+        self.brew_pathfinder()
 
         # Kubeaudit
-        if not shutil.which("kubeaudit"):
-            self.kubeaudit_bin = self.brew_pathfinder("kubeaudit")
-            if self.kubeaudit_bin is None:
-                self.requisites.append("kubeaudit")
-        else:
-            self.kubeaudit_bin = shutil.which("kubeaudit")
+        self.kubeaudit_bin = f'{self.brew_path}/kubeaudit' \
+            if os.path.exists(f'{self.brew_path}/kubeaudit') else shutil.which("kubeaudit")
+        if self.kubeaudit_bin is None:
+            self.requisites.append("kubeaudit")
 
         # Kube-bench
-        if not shutil.which("kube-bench"):
-            if os.path.isfile('/tmp/kube-bench/kube-bench'):
-                self.kube_bench_bin = "/tmp/kube-bench/kube-bench"
-            else:
-                self.requisites.append("kube-bench")
-        else:
-            self.kube_bench_bin = shutil.which("kube-bench")
+        self.kube_bench_bin = "/tmp/kube-bench/kube-bench" \
+            if os.path.exists('/tmp/kube-bench/kube-bench') else shutil.which("kube-bench")
+        if self.kube_bench_bin is None:
+            self.requisites.append("kube-bench")
 
         # Kubectl
-        if not shutil.which("kubectl"):
-            self.kubectl_bin = self.brew_pathfinder("kubectl")
-            if self.kubectl_bin is None:
-                self.requisites.append("kubectl")
-        else:
-            self.kubectl_bin = shutil.which("kubectl")
+        self.kubectl_bin = f'{self.brew_path}/kubectl' \
+            if os.path.exists(f'{self.brew_path}/kubectl') else shutil.which("kubectl")
+        if self.kubectl_bin is None:
+            self.requisites.append("kubectl")
 
         # Trivy
-        if not shutil.which("trivy"):
-            self.trivy_bin = self.brew_pathfinder("trivy")
-            if self.trivy_bin is None:
-                self.requisites.append("trivy")
-        else:
-            self.trivy_bin = shutil.which("trivy")
+        self.trivy_bin = f'{self.brew_path}/trivy' \
+            if os.path.exists(f'{self.brew_path}/trivy') else shutil.which("trivy")
+        if self.trivy_bin is None:
+            self.requisites.append("trivy")
 
         # Kubiscan
         if not shutil.which("kubiscan"):
@@ -225,48 +227,19 @@ class Kubenumerate:
                 self.requisites.append("kubiscan")
 
         # Wget
-        if not shutil.which("wget"):
-            if not shutil.which("wget"):
-                self.wget_bin = self.brew_pathfinder("wget")
-                if self.wget_bin is None:
-                    self.requisites.append("wget")
-        else:
-            self.wget_bin = shutil.which("wget")
+        self.wget_bin = f'{self.brew_path}/wget' if os.path.exists(f'{self.brew_path}/wget') else shutil.which("wget")
+        if self.wget_bin is None:
+            self.requisites.append("wget")
 
         # Jq
-        if not shutil.which("jq"):
-            if not shutil.which("jq"):
-                self.jq_bin = self.brew_pathfinder("jq")
-                if self.jq_bin is None:
-                    self.requisites.append("jq")
-        else:
-            self.jq_bin = shutil.which("jq")
+        self.jq_bin = f'{self.brew_path}/jq' if os.path.exists(f'{self.brew_path}/jq') else shutil.which("jq")
+        if self.jq_bin is None:
+            self.requisites.append("jq")
 
         if len(self.requisites) > 0:
             self.install_requisites()
         else:
             print(f'{self.green_text("[+]")} All necessary software successfully detected in the system.')
-
-    # TODO: below function is a quick hack. It can be optimised by creating self.brew_path and looking for it only once
-    @staticmethod
-    def brew_pathfinder(tool):
-        """Find brew bin directory and tool installed in it"""
-
-        paths = [f'/home/linuxbrew/.linuxbrew/bin',
-                 f'{Path.home()}/.linuxbrew/bin',
-                 f'/usr/local/bin',
-                 f'/opt/homebrew/bin']
-        match tool:
-            case "kubeaudit":
-                return next((f'{path}/kubeaudit' for path in paths if os.path.isfile(f'{path}/kubeaudit')), None)
-            case "kubectl":
-                return next((f'{path}/kubectl' for path in paths if os.path.isfile(f'{path}/kubectl')), None)
-            case "trivy":
-                return next((f'{path}/trivy' for path in paths if os.path.isfile(f'{path}/trivy')), None)
-            case "wget":
-                return next((f'{path}/wget' for path in paths if os.path.isfile(f'{path}/wget')), None)
-            case "jq":
-                return next((f'{path}/jq' for path in paths if os.path.isfile(f'{path}/jq')), None)
 
     def install_requisites(self):
         """Check for kubeaudit, kube-bench and trivy. Offer installing them if they are not present in the system"""
@@ -277,17 +250,14 @@ class Kubenumerate:
             if not self.install:
                 print(f'{self.red_text("[-]")} Please install kubeaudit: https://github.com/Shopify/kubeaudit')
             else:
-                if self.brew_pathfinder("kubeaudit") is None:
-                    self.install_tool("kubeaudit")
-                else:
-                    self.kubeaudit_bin = self.brew_pathfinder("kubeaudit")
+                self.install_tool("kubeaudit")
 
         # Install kube-bench
         if self.inst_kubebench:
             if not self.install:
                 print(f'{self.red_text("[-]")} Please install kube-bench: https://github.com/aquasecurity/kube-bench')
             else:
-                if not os.path.isfile('/tmp/kube-bench/kube-bench'):
+                if not os.path.exists('/tmp/kube-bench/kube-bench'):
                     self.install_tool("kube-bench")
                 else:
                     self.kube_bench_bin = "/tmp/kube-bench/kube-bench"
@@ -297,40 +267,28 @@ class Kubenumerate:
             if not self.install:
                 print(f'{self.red_text("[-]")} Please install kubectl: https://kubernetes.io/docs/tasks/tools/#kubectl')
             else:
-                if self.brew_pathfinder("kubectl") is None:
-                    self.install_tool("kubectl")
-                else:
-                    self.kubectl_bin = self.brew_pathfinder("kubectl")
+                self.install_tool("kubectl")
 
         # Install Trivy
         if self.inst_trivy:
             if not self.install:
                 print(f'{self.red_text("[-]")} Please install trivy: https://github.com/aquasecurity/trivy')
             else:
-                if self.brew_pathfinder("trivy") is None:
-                    self.install_tool("trivy")
-                else:
-                    self.trivy_bin = self.brew_pathfinder("trivy")
+                self.install_tool("trivy")
 
         # Install wget
         if self.inst_wget:
             if not self.install:
                 print(f'{self.red_text("[-]")} Please install wget via apt, brew, or your distro\'s package manager')
             else:
-                if self.brew_pathfinder("wget") is None:
-                    self.install_tool("wget")
-                else:
-                    self.wget_bin = self.brew_pathfinder("wget")
+                self.install_tool("wget")
 
         # Install jq
         if self.inst_jq:
             if not self.install:
                 print(f'{self.red_text("[-]")} Please install jq: https://github.com/jqlang/jq')
             else:
-                if self.brew_pathfinder("jq") is None:
-                    self.install_tool("jq")
-                else:
-                    self.jq_bin = self.brew_pathfinder("jq")
+                self.install_tool("jq")
 
         # Install kubiscan
         if self.inst_kubiscan:
@@ -346,12 +304,15 @@ class Kubenumerate:
         print(f'{self.green_text("[+]")} Rerunning {self.cyan_text("Kubenumerate")} with all necessary software '
               f'successfully installed in the system. If it fails, please run Kubenumerate again to make sure all '
               f'tools are in your path')
-        os.execv(sys.executable, ['python'] + sys.argv)
+        try:
+            os.execv(sys.executable, [f'{self.py_bin}'] + sys.argv)
+        except FileNotFoundError:
+            print(f'{self.red_text("[-]")} Error: Please run {self.cyan_text("Kubenumerate")} again manually '
+                  f'to make sure all tools are in your path.')
 
     def ask_for_permission(self):
         """Ask the user for permission to install needed software in the system"""
 
-        # TODO: trying to write this function so that it's not an eyesore
         # Dictionary to map tools to their attributes
         tool_attribute_mapping = {
             "jq": "inst_jq",
@@ -372,32 +333,6 @@ class Kubenumerate:
                     print_brew_message = True
 
             print(f'\t- {self.yellow_text(f"{tool}")}')
-
-        # Yuck,
-        # print_brew_message = False
-        # print(f'{self.cyan_text("[*]")} The following tools are needed:')
-        # for tool in self.requisites:
-        #     if tool == "jq":
-        #         self.inst_jq = True
-        #         print_brew_message = True
-        #     elif tool == "kubeaudit":
-        #         self.inst_kubeaudit = True
-        #         print_brew_message = True
-        #     elif tool == "kube-bench":
-        #         self.inst_kubebench = True
-        #     elif tool == "kubectl":
-        #         self.inst_kubectl = True
-        #         print_brew_message = True
-        #     elif tool == "trivy":
-        #         self.inst_trivy = True
-        #         print_brew_message = True
-        #     elif tool == "kubiscan":
-        #         self.inst_kubiscan = True
-        #     elif tool == "wget":
-        #         self.inst_wget = True
-        #         print_brew_message = True
-        #
-        #     print(f'\t- {self.yellow_text(f"{tool}")}')
 
         if print_brew_message:
             print(f'{self.yellow_text("[!]")} {self.cyan_text("Brew")} (https://brew.sh), will be used as the '
@@ -430,7 +365,7 @@ class Kubenumerate:
 
         if not shutil.which("brew"):
             # TODO: plug here the pathfinder result, or use it there
-            if not os.path.isfile("/home/linuxbrew/.linuxbrew/bin/brew"):
+            if not os.path.exists("/home/linuxbrew/.linuxbrew/bin/brew"):
                 if self.install:
                     self.install_tool("brew")
             else:
@@ -568,7 +503,7 @@ class Kubenumerate:
             latest_release_data = response.json()
 
             download_url = get_download_url(tool, latest_release_data)
-            if self.verbosity > 0:
+            if self.verbosity > 1:
                 print("DEBUG DEV: latest_release_data", latest_release_data)
                 print("DEBUG DEV: download_url", download_url)
 
@@ -656,7 +591,7 @@ class Kubenumerate:
                 self.kubeconfig_path = self.args.kubeconfig
 
             # OS-agnostic way of checking the home dir for .kube/config
-            if self.kubeconfig_path is None:
+            if self.kubeconfig_path is None or self.kubeconfig_path == '':
                 common_kubeconfig_location = f"{Path.home()}/.kube/config"
                 if os.path.isfile(common_kubeconfig_location):
                     self.kubeconfig_path = common_kubeconfig_location
@@ -676,15 +611,13 @@ class Kubenumerate:
             except Exception as e:
                 print(f'{self.red_text("[-]")} Error loading kubeconfig file: {e}')
 
-        # Find python3 binary
-        if not os.path.exists(self.py_bin):
-            py_bin = shutil.which("python3")
-            if py_bin:
-                self.py_bin = py_bin
-                return
+        # Ensure python3 binary is valid
+        if self.py_bin is None:
+            self.py_bin = shutil.which("python3") if sys.executable is None else sys.executable
+            return
 
-            print(f'{self.red_text("[-]")} Python executable not found automatically in the system. '
-                  f'Kubiscan will not be run.')
+        print(f'{self.red_text("[-]")} Python executable not found automatically in the system. '
+              f'Kubiscan will not be run.')
 
         # Construct excel filename
         self.parse_excel_filename()
@@ -799,11 +732,16 @@ class Kubenumerate:
             print(
                 f'{self.cyan_text("[*]")} Gathering output from every resource {self.cyan_text(f"kubectl")} has '
                 f'permission to get. Please wait...')
-        awk_command = "awk '// {print $1}'"
 
+        awk_command = "awk '// {print $1}'"
         command = f'{self.kubectl_bin} api-resources --no-headers | {awk_command} | sort -u'
         resources = subprocess.check_output(command, shell=True).decode().split("\n")[:-1]
         total_resources = len(resources)
+
+        if total_resources == 0:
+            print(f'{self.red_text("[-]")} It was not possible to get number of resources from kubectl. Are you '
+                  f'connected to the cluster?')
+            exit(50)
 
         # Start progress bar
         start = time.time()
@@ -873,7 +811,7 @@ class Kubenumerate:
                     f.write(stdout.decode("utf-8"))
 
         except ZeroDivisionError:
-            print(f'{self.red_text("[-]")} Error: No resources were found. Are you connected to the cluster?')
+            print(f'{self.red_text("[-]")} Error: No resources were found. Are you connected to the cluster?\n')
 
         print("\n", flush=True, file=sys.stdout)
         print(f'{self.green_text("[+]")} Successfully extracted '
@@ -911,7 +849,7 @@ class Kubenumerate:
         """Class main method. Launch kubeaudit, kube-bench and trivy and parse them"""
 
         # Abort immediately if python 3.11 is not being used
-        python_version = subprocess.run("python3 --version".split(" "), check=True, capture_output=True,
+        python_version = subprocess.run(f"{self.py_bin} --version".split(" "), check=True, capture_output=True,
                                         text=True).stdout.split(" ")[1].strip().split(".")
         if float(f'{python_version[0]}.{python_version[1]}') < 3.11:
             print(
@@ -1060,7 +998,7 @@ class Kubenumerate:
             self.kubiscan_py = f'{self.kubiscan_py} -co {self.args.kubeconfig}'
 
         try:
-            command = f"python3 {self.kubiscan_py} -a".split(" ")
+            command = f"{self.py_bin} {self.kubiscan_py} -a".split(" ")
             process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
             stdout, stderr = process.communicate()
 
