@@ -12,6 +12,7 @@ import subprocess
 import sys
 import tarfile
 import time
+import platform
 import yaml
 import zipfile
 from datetime import datetime
@@ -24,16 +25,17 @@ class Kubenumerate:
         PRs: https://github.com/0x5ubt13/kubenumerate
     """
 
-    def __init__(self, args="", automount=False, brew_bin="/home/linuxbrew/.linuxbrew/bin/brew", cis=False,
+    def __init__(self, args="", automount=False, brew_bin="", brew_path="", cis=False,
                  cluster_version="", date=datetime.now().strftime("%b%y"), depr_api=False, dry_run=False,
-                 excel_file="kubenumerate_results_v1_0.xlsx", hardened=True, inst_jq=False, inst_kubeaudit=False,
-                 inst_kubebench=False, inst_kubectl=False, inst_kubiscan=False, inst_trivy=False, inst_wget=False,
-                 install=False, jq_bin="jq", kubeaudit_bin="kubeaudit", kubeaudit_file="", kube_bench_bin="kube-bench",
-                 kube_bench_file="", kubectl_bin="kubectl", kubectl_path="/tmp/kubenumerate_out/kubectl_output/",
-                 kube_version="v1.31.0", kubiscan_path="/tmp/kubiscan/", kubiscan_py="", limits=True, namespace='-A',
+                 excel_file="kubenumerate_results_v1_0.xlsx", home_dir=Path.home(), hardened=True,
+                 host_os=platform.system(), host_arch="", inst_jq=False, inst_kubeaudit=False, inst_kubebench=False,
+                 inst_kubectl=False, inst_kubiscan=False, inst_trivy=False, inst_wget=False, install=False, jq_bin="",
+                 kubeaudit_bin="", kubeaudit_file="", kube_bench_bin="", kube_bench_file="", kubeconfig_path=None,
+                 kubectl_bin="kubectl", kubectl_path="/tmp/kubenumerate_out/kubectl_output/", kube_version="v1.31.0",
+                 kubiscan_path="/tmp/kubiscan/", kubiscan_py="", limits=True, namespace='-A',
                  out_path="/tmp/kubenumerate_out/", pkl_recovery="", pods="", pods_file="", privesc=False,
-                 privileged=False, py_bin="/usr/bin/python3", requisites=None, sus_rbac=False, trivy_bin="trivy",
-                 trivy_file="", verbosity=1, version="1.2.0", version_diff=0, vuln_image=False, wget_bin="wget"):
+                 privileged=False, py_bin=sys.executable, requisites=None, sus_rbac=False, trivy_bin="",
+                 trivy_file="", verbosity=1, version="1.2.2", version_diff=0, vuln_image=False, wget_bin=""):
         """Initialize attributes"""
 
         if requisites is None:
@@ -42,6 +44,7 @@ class Kubenumerate:
         self.args = args
         self.automount = automount
         self.brew_bin = brew_bin
+        self.brew_path = brew_path
         self.cis_detected = cis
         self.cluster_version = cluster_version
         self.date = date
@@ -49,6 +52,9 @@ class Kubenumerate:
         self.dry_run = dry_run
         self.excel_file = excel_file
         self.hardened = hardened
+        self.home_dir = home_dir
+        self.host_os = host_os
+        self.host_arch = host_arch
         self.inst_jq = inst_jq
         self.inst_kubeaudit = inst_kubeaudit
         self.inst_kubebench = inst_kubebench
@@ -62,7 +68,7 @@ class Kubenumerate:
         self.kubeaudit_file = kubeaudit_file
         self.kube_bench_bin = kube_bench_bin
         self.kube_bench_file = kube_bench_file
-        self.kubeconfig_path = f"/home/{user}/.kube/config"
+        self.kubeconfig_path = kubeconfig_path
         self.kubectl_bin = kubectl_bin
         self.kubectl_path = kubectl_path
         self.kube_version = kube_version
@@ -90,6 +96,7 @@ class Kubenumerate:
     def parse_args(self):
         """Parse args and return them"""
 
+        # TODO: make no colour flag for those using a light mode terminal. Then in colour methods simply use black
         parser = argparse.ArgumentParser(
             description='Uses local kubeconfig file to launch kubeaudit, kube-bench, kubectl, trivy and KubiScan '
                         'and parses all useful output to excel.')
@@ -137,43 +144,97 @@ class Kubenumerate:
             default=1)
         self.args = parser.parse_args()
 
+    def check_os(self):
+        """Detect if script is being run in macOS, Linux or other, and its architecture"""
+        class ArchitectureNotSupported(Exception):
+            def __init__(self, message, supported_architectures=None):
+                self.message = message
+                self.supported_architectures = supported_architectures or ['Linux amd64', 'macOS amd64', 'macOS arm64']
+                super().__init__(self.message)
+
+            def get_currently_supported_architectures(self):
+                return "\n\t".join(f"- {supported_arch}" for supported_arch in self.supported_architectures)
+
+        try:
+            arch = platform.machine().lower()
+            match self.host_os:
+                case "Darwin":
+                    match arch:
+                        case "x86_64":
+                            self.host_arch = "darwin_amd64"
+                        case "arm64":
+                            self.host_arch = "darwin_arm64"
+                        case _:
+                            raise ArchitectureNotSupported(f"macOS - {self.host_arch} not supported.")
+                case "Linux":
+                    if arch != "x86_64":
+                        raise ArchitectureNotSupported(f"Linux {self.host_arch} architecture not currently supported.")
+                    self.host_arch = "linux_amd64"
+                case "Windows" | "FreeBSD" | "OpenBSD" | _:
+                    raise ArchitectureNotSupported(f"OS {self.host_os} not supported.")
+        except ArchitectureNotSupported as e:
+            print(f'{self.red_text("[-]")} Architecture error: {e}\nCurrently, {self.cyan_text("Kubenumerate")} '
+                  f'supports the following OS and architectures: {e.get_currently_supported_architectures()}')
+            exit(80)
+        except Exception as e:
+            print(f'{self.red_text("[-]")} Error detected when trying to establish the system\'s architecture: {e}\n'
+                  f'Currently supported OSs and architectures:\n\t- Linux amd64\n\t- macOS amd64\n\t- macOS arm64")'
+                  f'{self.cyan_text("Kubenumerate")}')
+            exit(80)
+
+    def brew_pathfinder(self):
+        """Find brew bin directory"""
+
+        paths = [f'/home/linuxbrew/.linuxbrew/bin', f'{Path.home()}/.linuxbrew/bin', f'/usr/local/bin',
+                 f'/opt/homebrew/bin']
+
+        self.brew_path = next((path for path in paths if os.path.exists(path)), None)
+        self.brew_bin = f'{self.brew_path}/brew' if os.path.exists(f'{self.brew_path}/brew') else None
+
     def check_requisites(self):
-        """Check for kubeaudit, kube-bench and trivy. Exit if they are not present in the system"""
+        """Check for kubeaudit, kube-bench, trivy, etc. Shout if they're not present in the system"""
 
-        if not shutil.which("kubeaudit"):
-            if os.path.isfile('/home/linuxbrew/.linuxbrew/bin/kubeaudit'):
-                self.kubeaudit_bin = "/home/linuxbrew/.linuxbrew/bin/kubeaudit"
-            else:
-                self.requisites.append("kubeaudit")
-        if not shutil.which("kube-bench"):
-            if os.path.isfile('/tmp/kube-bench/kube-bench'):
-                self.kube_bench_bin = "/tmp/kube-bench/kube-bench"
-            else:
-                self.requisites.append("kube-bench")
-        if not shutil.which("kubectl"):
-            if os.path.isfile('/home/linuxbrew/.linuxbrew/bin/kubectl'):
-                self.kubectl_bin = "/home/linuxbrew/.linuxbrew/bin/kubectl"
-            else:
-                self.requisites.append("kubectl")
-        if not shutil.which("trivy"):
-            if os.path.isfile('/home/linuxbrew/.linuxbrew/bin/trivy'):
-                self.trivy_bin = "/home/linuxbrew/.linuxbrew/bin/trivy"
-            else:
-                self.requisites.append("trivy")
+        self.check_os()
+        self.brew_pathfinder()
+
+        # Kubeaudit
+        self.kubeaudit_bin = f'{self.brew_path}/kubeaudit' \
+            if os.path.exists(f'{self.brew_path}/kubeaudit') else shutil.which("kubeaudit")
+        if self.kubeaudit_bin is None:
+            self.requisites.append("kubeaudit")
+
+        # Kube-bench
+        self.kube_bench_bin = "/tmp/kube-bench/kube-bench" \
+            if os.path.exists('/tmp/kube-bench/kube-bench') else shutil.which("kube-bench")
+        if self.kube_bench_bin is None:
+            self.requisites.append("kube-bench")
+
+        # Kubectl
+        self.kubectl_bin = f'{self.brew_path}/kubectl' \
+            if os.path.exists(f'{self.brew_path}/kubectl') else shutil.which("kubectl")
+        if self.kubectl_bin is None:
+            self.requisites.append("kubectl")
+
+        # Trivy
+        self.trivy_bin = f'{self.brew_path}/trivy' \
+            if os.path.exists(f'{self.brew_path}/trivy') else shutil.which("trivy")
+        if self.trivy_bin is None:
+            self.requisites.append("trivy")
+
+        # Kubiscan
         if not shutil.which("kubiscan"):
-
             if not self.find_kubiscan_bin():
                 self.requisites.append("kubiscan")
-        if not shutil.which("jq"):
-            if os.path.isfile('/home/linuxbrew/.linuxbrew/bin/trivy'):
-                self.jq_bin = "/home/linuxbrew/.linuxbrew/bin/jq"
-            else:
-                self.requisites.append("jq")
-        if not shutil.which("wget"):
-            if os.path.isfile('/home/linuxbrew/.linuxbrew/bin/wget'):
-                self.wget_bin = "/home/linuxbrew/.linuxbrew/bin/wget"
-            else:
-                self.requisites.append("wget")
+
+        # Wget
+        self.wget_bin = f'{self.brew_path}/wget' if os.path.exists(f'{self.brew_path}/wget') else shutil.which("wget")
+        if self.wget_bin is None:
+            self.requisites.append("wget")
+
+        # Jq
+        self.jq_bin = f'{self.brew_path}/jq' if os.path.exists(f'{self.brew_path}/jq') else shutil.which("jq")
+        if self.jq_bin is None:
+            self.requisites.append("jq")
 
         if len(self.requisites) > 0:
             self.install_requisites()
@@ -182,61 +243,54 @@ class Kubenumerate:
 
     def install_requisites(self):
         """Check for kubeaudit, kube-bench and trivy. Offer installing them if they are not present in the system"""
-
         self.ask_for_permission()
 
-        if self.inst_jq:
-            if not self.install:
-                print(f'{self.red_text("[-]")} Please install jq: https://github.com/jqlang/jq')
-            else:
-                if self.inst_kubeaudit:
-                    if not os.path.isfile('/home/linuxbrew/.linuxbrew/bin/jq'):
-                        self.install_tool("jq")
-                    else:
-                        self.jq_bin = '/home/linuxbrew/.linuxbrew/bin/jq'
+        # Install kubeaudit
         if self.inst_kubeaudit:
             if not self.install:
                 print(f'{self.red_text("[-]")} Please install kubeaudit: https://github.com/Shopify/kubeaudit')
             else:
-                if self.inst_kubeaudit:
-                    if not os.path.isfile('/home/linuxbrew/.linuxbrew/bin/kubeaudit'):
-                        self.install_tool("kubeaudit")
-                    else:
-                        self.kubeaudit_bin = '/home/linuxbrew/.linuxbrew/bin/kubeaudit'
+                self.install_tool("kubeaudit")
+
+        # Install kube-bench
         if self.inst_kubebench:
             if not self.install:
                 print(f'{self.red_text("[-]")} Please install kube-bench: https://github.com/aquasecurity/kube-bench')
             else:
-                if not os.path.isfile('/tmp/kube-bench/kube-bench'):
+                if not os.path.exists('/tmp/kube-bench/kube-bench'):
                     self.install_tool("kube-bench")
                 else:
                     self.kube_bench_bin = "/tmp/kube-bench/kube-bench"
+
+        # Install kubectl
         if self.inst_kubectl:
             if not self.install:
                 print(f'{self.red_text("[-]")} Please install kubectl: https://kubernetes.io/docs/tasks/tools/#kubectl')
             else:
-                if not os.path.isfile('/home/linuxbrew/.linuxbrew/bin/kubectl'):
-                    self.install_tool("kubectl")
-                else:
-                    self.kubectl_bin = "/home/linuxbrew/.linuxbrew/bin/kubectl"
-            self.inst_kubectl = True
+                self.install_tool("kubectl")
+
+        # Install Trivy
         if self.inst_trivy:
             if not self.install:
                 print(f'{self.red_text("[-]")} Please install trivy: https://github.com/aquasecurity/trivy')
             else:
-                if not os.path.isfile('/home/linuxbrew/.linuxbrew/bin/trivy'):
-                    self.install_tool("trivy")
-                else:
-                    self.trivy_bin = "/home/linuxbrew/.linuxbrew/bin/trivy"
+                self.install_tool("trivy")
+
+        # Install wget
         if self.inst_wget:
             if not self.install:
                 print(f'{self.red_text("[-]")} Please install wget via apt, brew, or your distro\'s package manager')
             else:
-                if self.inst_wget:
-                    if not os.path.isfile('/home/linuxbrew/.linuxbrew/bin/wget'):
-                        self.install_tool("wget")
-                    else:
-                        self.wget_bin = "/home/linuxbrew/.linuxbrew/bin/wget"
+                self.install_tool("wget")
+
+        # Install jq
+        if self.inst_jq:
+            if not self.install:
+                print(f'{self.red_text("[-]")} Please install jq: https://github.com/jqlang/jq')
+            else:
+                self.install_tool("jq")
+
+        # Install kubiscan
         if self.inst_kubiscan:
             if not self.install:
                 print(f'{self.red_text("[-]")} Please install KubiScan: https://github.com/cyberark/KubiScan')
@@ -250,33 +304,33 @@ class Kubenumerate:
         print(f'{self.green_text("[+]")} Rerunning {self.cyan_text("Kubenumerate")} with all necessary software '
               f'successfully installed in the system. If it fails, please run Kubenumerate again to make sure all '
               f'tools are in your path')
-        os.execv(sys.executable, ['python'] + sys.argv)
+        try:
+            os.execv(sys.executable, [f'{self.py_bin}'] + sys.argv)
+        except FileNotFoundError:
+            print(f'{self.red_text("[-]")} Error: Please run {self.cyan_text("Kubenumerate")} again manually '
+                  f'to make sure all tools are in your path.')
 
     def ask_for_permission(self):
         """Ask the user for permission to install needed software in the system"""
 
+        # Dictionary to map tools to their attributes
+        tool_attribute_mapping = {
+            "jq": "inst_jq",
+            "kubeaudit": "inst_kubeaudit",
+            "kube-bench": "inst_kubebench",
+            "kubectl": "inst_kubectl",
+            "trivy": "inst_trivy",
+            "kubiscan": "inst_kubiscan",
+            "wget": "inst_wget"
+        }
         print_brew_message = False
+
         print(f'{self.cyan_text("[*]")} The following tools are needed:')
         for tool in self.requisites:
-            if tool == "jq":
-                print_brew_message = True
-                self.inst_jq = True
-            elif tool == "kubeaudit":
-                print_brew_message = True
-                self.inst_kubeaudit = True
-            elif tool == "kube-bench":
-                self.inst_kubebench = True
-            elif tool == "kubectl":
-                print_brew_message = True
-                self.inst_kubectl = True
-            elif tool == "trivy":
-                print_brew_message = True
-                self.inst_trivy = True
-            elif tool == "kubiscan":
-                self.inst_kubiscan = True
-            elif tool == "wget":
-                print_brew_message = True
-                self.inst_wget = True
+            if tool in tool_attribute_mapping:
+                setattr(self, tool_attribute_mapping[tool], True)  # Elegant hack
+                if tool != "kube-bench" and tool != "kubiscan" and not print_brew_message:
+                    print_brew_message = True
 
             print(f'\t- {self.yellow_text(f"{tool}")}')
 
@@ -304,14 +358,20 @@ class Kubenumerate:
             if answer.startswith("n"):
                 self.install = False
                 print(
-                    f'{self.red_text("[-]")} No consent given, {self.cyan_text("Kubenumerate")} will exit now. Please find below all the '
+                    f'{self.red_text("[-]")} No consent given, {self.cyan_text("Kubenumerate")} will exit now. '
+                    f'Please find below all the '
                     f'required tools below and their official repositories for you to manually download and install:\n')
                 break
 
         if not shutil.which("brew"):
-            if not os.path.isfile(self.brew_bin):
+            # TODO: plug here the pathfinder result, or use it there
+            if not os.path.exists("/home/linuxbrew/.linuxbrew/bin/brew"):
                 if self.install:
                     self.install_tool("brew")
+            else:
+                self.brew_bin = "/home/linuxbrew/.linuxbrew/bin/brew"
+        else:
+            self.brew_bin = shutil.which("brew")
 
     def install_tool(self, tool):
         """Install the passed tool using brew, or install brew using bash"""
@@ -348,7 +408,8 @@ class Kubenumerate:
                         file == "kube-bench")
                     # Make it executable
                     os.chmod(self.kube_bench_bin, 0o755)
-                # print("DEBUG DEV: kube-bench installed successfully")
+                if self.verbosity > 1:
+                    print("DEBUG DEV: kube-bench installed successfully")
             except Exception as e:
                 print(f"{self.red_text('[-]')} It was not possible to download kube-bench: {e}")
             return
@@ -360,14 +421,16 @@ class Kubenumerate:
         if tool == "kubiscan":
             try:
                 downloaded_zipball = self.fetch_and_download_latest_version_from_github("kubiscan")
-                # print("DEBUG DEV: kubiscan downloaded successfully")
+                if self.verbosity > 1:
+                    print("DEBUG DEV: kubiscan downloaded successfully")
 
                 kubiscan_path = "/tmp/kubiscan/"
                 # Extract the tool
                 try:
                     with zipfile.ZipFile(downloaded_zipball, 'r') as zip_ref:
                         zip_ref.extractall(kubiscan_path)
-                    # print(f"DEV DEBUG: {tool}'s repository downloaded and extracted successfully.")
+                    if self.verbosity > 1:
+                        print(f"DEV DEBUG: {tool}'s repository downloaded and extracted successfully.")
                 except Exception as e:
                     print(f'{self.red_text("[-]")} Error while extracting {tool}: {e}')
                     sys.exit(1)
@@ -376,7 +439,8 @@ class Kubenumerate:
                 for root, dirs, files in os.walk(kubiscan_path):
                     if "KubiScan.py" in files:
                         self.kubiscan_py = os.path.join(root, "KubiScan.py")
-                # print("DEBUG DEV: kubiscan path:", self.kubiscan_py)
+                if self.verbosity > 1:
+                    print("DEBUG DEV: kubiscan path:", self.kubiscan_py)
             except Exception as e:
                 print(f"{self.red_text('[-]')} It was not possible to download kubiscan: {e}")
             return
@@ -403,16 +467,27 @@ class Kubenumerate:
         def get_download_url(target, latest):
             """Needing to do different download types for different tools as assets are not the same"""
             if target == "kube-bench":
-                # Find the download URL for the linux_amd64.tar.gz asset
-                return next(asset['browser_download_url']
-                            for asset in latest['assets'] if 'linux_amd64.tar.gz' in asset['name'])
+                if self.host_os == "Linux":
+                    return next(asset['browser_download_url']
+                                for asset in latest['assets'] if 'linux_amd64.tar.gz' in asset['name'])
+                if self.host_arch == "darwin_amd64":
+                        return next(asset['browser_download_url']
+                                    for asset in latest['assets'] if 'darwin_amd64.tar.gz' in asset['name'])
+                if self.host_arch == "darwin_arm64":
+                    return next(asset['browser_download_url']
+                                for asset in latest['assets'] if 'darwin_arm64.tar.gz' in asset['name'])
             if target == "kubiscan":
                 # Python package, simply get the zipball
                 return latest['zipball_url']
 
         try:
             tool_tmp_dir, repo, tool_full_path = f'/tmp/{tool}/', '', ''
-            os.makedirs(tool_tmp_dir, exist_ok=True)
+            try:
+                os.makedirs(tool_tmp_dir, exist_ok=True)
+            except PermissionError as e:
+                print(f'{self.red_text("[-]")} Permission error while creating tmp dir: {e}')
+            except Exception as e:
+                print(f'{self.red_text("[-]")} Error while creating tmp dir: {e}')
 
             if tool == "kube-bench":
                 repo = "aquasecurity/kube-bench"
@@ -428,7 +503,9 @@ class Kubenumerate:
             latest_release_data = response.json()
 
             download_url = get_download_url(tool, latest_release_data)
-            # print("DEBUG DEV: download_url", download_url)
+            if self.verbosity > 1:
+                print("DEBUG DEV: latest_release_data", latest_release_data)
+                print("DEBUG DEV: download_url", download_url)
 
             # Download the file
             subprocess.run(f"{self.wget_bin} -P {tool_tmp_dir} {download_url} -O {tool_full_path}".split(" "))
@@ -513,6 +590,12 @@ class Kubenumerate:
             if self.args.kubeconfig is not None:
                 self.kubeconfig_path = self.args.kubeconfig
 
+            # OS-agnostic way of checking the home dir for .kube/config
+            if self.kubeconfig_path is None or self.kubeconfig_path == '':
+                common_kubeconfig_location = f"{Path.home()}/.kube/config"
+                if os.path.isfile(common_kubeconfig_location):
+                    self.kubeconfig_path = common_kubeconfig_location
+
             try:
                 with open(self.kubeconfig_path, 'r') as kubeconfig_file:
                     kubeconfig = yaml.safe_load(kubeconfig_file)
@@ -528,15 +611,13 @@ class Kubenumerate:
             except Exception as e:
                 print(f'{self.red_text("[-]")} Error loading kubeconfig file: {e}')
 
-        # Find python3 binary
-        if not os.path.exists(self.py_bin):
-            py_bin = shutil.which("python3")
-            if py_bin:
-                self.py_bin = py_bin
-                return
+        # Ensure python3 binary is valid
+        if self.py_bin is None:
+            self.py_bin = shutil.which("python3") if sys.executable is None else sys.executable
+            return
 
-            print(f'{self.red_text("[-]")} Python executable not found automatically in the system. '
-                  f'Kubiscan will not be run.')
+        print(f'{self.red_text("[-]")} Python executable not found automatically in the system. '
+              f'Kubiscan will not be run.')
 
         # Construct excel filename
         self.parse_excel_filename()
@@ -651,11 +732,16 @@ class Kubenumerate:
             print(
                 f'{self.cyan_text("[*]")} Gathering output from every resource {self.cyan_text(f"kubectl")} has '
                 f'permission to get. Please wait...')
-        awk_command = "awk '// {print $1}'"
 
+        awk_command = "awk '// {print $1}'"
         command = f'{self.kubectl_bin} api-resources --no-headers | {awk_command} | sort -u'
         resources = subprocess.check_output(command, shell=True).decode().split("\n")[:-1]
         total_resources = len(resources)
+
+        if total_resources == 0:
+            print(f'{self.red_text("[-]")} It was not possible to get number of resources from kubectl. Are you '
+                  f'connected to the cluster?')
+            exit(50)
 
         # Start progress bar
         start = time.time()
@@ -691,7 +777,9 @@ class Kubenumerate:
                 # Save the output to its own file
                 contents = json.loads(stdout.decode("utf-8"))
                 if not contents["items"]:
-                    # print(f'{self.cyan_text("[*]")} DEBUG (DEV branch): not saving file {resource} because it came up empty')
+                    if self.verbosity > 1:
+                        print(f'{self.cyan_text("[*]")} DEBUG (DEV branch): not saving '
+                              f'file {resource} because it came up empty')
                     skipped += 1
                     continue
 
@@ -723,7 +811,7 @@ class Kubenumerate:
                     f.write(stdout.decode("utf-8"))
 
         except ZeroDivisionError:
-            print(f'{self.red_text("[-]")} Error: No resources were found. Are you connected to the cluster?')
+            print(f'{self.red_text("[-]")} Error: No resources were found. Are you connected to the cluster?\n')
 
         print("\n", flush=True, file=sys.stdout)
         print(f'{self.green_text("[+]")} Successfully extracted '
@@ -761,7 +849,7 @@ class Kubenumerate:
         """Class main method. Launch kubeaudit, kube-bench and trivy and parse them"""
 
         # Abort immediately if python 3.11 is not being used
-        python_version = subprocess.run("python3 --version".split(" "), check=True, capture_output=True,
+        python_version = subprocess.run(f"{self.py_bin} --version".split(" "), check=True, capture_output=True,
                                         text=True).stdout.split(" ")[1].strip().split(".")
         if float(f'{python_version[0]}.{python_version[1]}') < 3.11:
             print(
@@ -819,7 +907,7 @@ class Kubenumerate:
                     # Make dataframe for Kubeaudit
                     kubeaudit_df = pd.read_json(kubeaudit_f, lines=True)
 
-                    # Run all kubeaudit methods
+                    # Run all Kubeaudit methods
                     self.apparmor(kubeaudit_df, writer)
                     self.asat(kubeaudit_df, writer)
                     self.caps(kubeaudit_df, writer)
@@ -846,7 +934,7 @@ class Kubenumerate:
                     # Parse all pods for Trivy
                     self.parse_all_pods()
 
-                    # Run trivy methods
+                    # Run Trivy methods
                     self.trivy_parser(writer)
                     if self.verbosity > 0:
                         print(f'{self.green_text("[+]")} {self.cyan_text("Trivy")} successfully parsed.')
@@ -854,20 +942,20 @@ class Kubenumerate:
         if self.verbosity >= 0:
             print(f'{self.green_text("[+]")} Done! All output successfully saved to {self.cyan_text(self.excel_file)}.')
 
+        # TODO: consider feasibility of including icekube
+
         # Run ExtensiveRoleCheck.py
-        # print(f'{self.cyan_text("[*]")} Extra: including ExtensiveRoleCheck.py and KubiScan to Kubenumerate (dev branch only)')
         if self.verbosity > 0:
             print(
                 f'\n{self.cyan_text("[*]")} ----- Running RBAC checks, please wait... -----')
         self.check_roles()
-
         # Finish by raising issues to the terminal
         self.raise_issues()
 
     def check_roles(self):
         if self.dry_run:
             print(f'{self.cyan_text("[*]")} --dry-run flag detected. Using current directory to fetch json files'
-                   'needed to run ExtensiveRoleCheck.py.')
+                  f'needed to run ExtensiveRoleCheck.py.')
             self.run_extensive_role_check()
             return
         self.run_kubiscan()
@@ -879,23 +967,14 @@ class Kubenumerate:
         extensive_role_check_file_path = 'ExtensiveRoleCheck.py'
         try:
             command = (f"{self.py_bin} {extensive_role_check_file_path}"
-                        " --clusterRole clusterroles.json"
-                        " --role roles.json"
-                        " --rolebindings rolebindings.json"
-                        " --clusterrolebindings clusterrolebindings.json"
-                        " --pods pods.json").split(" ")
-            # else:
-            #     command = (f"python3 {extensive_role_check_file_path}"
-            #                f" --clusterRole {self.kubectl_path}clusterroles.json"
-            #                f" --role {self.kubectl_path}roles.json"
-            #                f" --rolebindings {self.kubectl_path}rolebindings.json"
-            #                f" --clusterrolebindings {self.kubectl_path}clusterrolebindings.json"
-            #                f" --pods {self.kubectl_path}pods.json").split(" ")
+                       f" --clusterRole clusterroles.json"
+                       f" --role roles.json"
+                       f" --rolebindings rolebindings.json"
+                       f" --clusterrolebindings clusterrolebindings.json"
+                       f" --pods pods.json").split(" ")
             process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             stdout, stderr = process.communicate()
 
-            # TODO: parse error output and print what is the exact cause
-            # TODO: check that all mentioned files are bigger than 0, otherwise flag to user
             if len(stderr) > 0:
                 print(f'{self.red_text("[-]")} Error while running {self.cyan_text("ExtensiveRoleCheck.py")}: '
                       f'{stderr.decode("utf-8")}')
@@ -919,7 +998,7 @@ class Kubenumerate:
             self.kubiscan_py = f'{self.kubiscan_py} -co {self.args.kubeconfig}'
 
         try:
-            command = f"python3 {self.kubiscan_py} -a".split(" ")
+            command = f"{self.py_bin} {self.kubiscan_py} -a".split(" ")
             process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
             stdout, stderr = process.communicate()
 
@@ -1011,7 +1090,7 @@ class Kubenumerate:
             print(f'{self.cyan_text("[*]")} Running kubeaudit, please wait...')
 
         if self.args.kubeconfig is not None:
-            self.kubeaudit_bin = f'{self.kubeaudit_bin} --kubeconfig {self.args.kubeconfig}' #TODO: substitute for self.kubeconfig_path?
+            self.kubeaudit_bin = f'{self.kubeaudit_bin} --kubeconfig {self.kubeconfig_path}'
 
         command = f"{self.kubeaudit_bin} all -p json"
         process = subprocess.Popen(command.split(" "), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -1040,6 +1119,7 @@ class Kubenumerate:
         #       try to find it
         #       if not found:
         #           user input -> please tell me where to look for the kube-bench binary
+        #   ... or use a different tool that isn't kube-bench because not realistically will this be called in a node
         kube_bench_config_flag = ""
         if self.kube_bench_bin == "/tmp/kube-bench/kube-bench":
             kube_bench_config_flag = "--config-dir /tmp/kube-bench/cfg/"
@@ -1968,7 +2048,6 @@ class Kubenumerate:
 
                         # Proceed scanning the image
                         scanned_images.append(image_name)
-                        highs, found_high_CVEs, crits, found_crit_CVEs = 0, [], 0, []
                         try:
                             if self.verbosity > 1:
                                 print(f"Scanning image {image_name}")
@@ -1976,14 +2055,19 @@ class Kubenumerate:
                             if vulnerabilities == "error":
                                 continue
 
+                            # Get number of CVEs
+                            highs, found_high_CVEs, crits, found_crit_CVEs = 0, [], 0, []
                             for result in vulnerabilities.get("Results", []):
                                 for vulnerability in result.get('Vulnerabilities', []):
+                                    vuln_id = vulnerability.get('VulnerabilityID')
                                     if "HIGH" in vulnerability.get('Severity'):
-                                        found_high_CVEs.append(vulnerability.get('VulnerabilityID'))
-                                        highs += 1
+                                        if vuln_id not in found_high_CVEs:
+                                            found_high_CVEs.append(vulnerability.get('VulnerabilityID'))
+                                            highs += 1
                                     if "CRITICAL" in vulnerability.get('Severity'):
-                                        found_crit_CVEs.append(vulnerability.get('VulnerabilityID'))
-                                        crits += 1
+                                        if vuln_id not in found_crit_CVEs:
+                                            found_crit_CVEs.append(vulnerability.get('VulnerabilityID'))
+                                            crits += 1
 
                             if highs > 0 or crits > 0:
                                 if self.verbosity > 1:
@@ -2112,7 +2196,8 @@ class Kubenumerate:
             f.write(str(issues_raised))
 
     # TODO: Minimal improvement: check whether @static works fine here
-    def colour_cells_and_save_to_excel(self, title, subtitle, sheet_name, df, writer):
+    @staticmethod
+    def colour_cells_and_save_to_excel(title, subtitle, sheet_name, df, writer):
         workbook = writer.book
         worksheet = workbook.add_worksheet(sheet_name)
         worksheet.set_zoom(90)
