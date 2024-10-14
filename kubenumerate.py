@@ -614,10 +614,8 @@ class Kubenumerate:
         # Ensure python3 binary is valid
         if self.py_bin is None:
             self.py_bin = shutil.which("python3") if sys.executable is None else sys.executable
-            return
-
-        print(f'{self.red_text("[-]")} Python executable not found automatically in the system. '
-              f'Kubiscan will not be run.')
+            if shutil.which(self.py_bin) is None:
+                self.py_bin = shutil.which("python")
 
         # Construct excel filename
         self.parse_excel_filename()
@@ -849,12 +847,13 @@ class Kubenumerate:
         """Class main method. Launch kubeaudit, kube-bench and trivy and parse them"""
 
         # Abort immediately if python 3.11 is not being used
+        self.py_bin = "python3" if self.py_bin is None else self.py_bin  # Triple check python is valid
         python_version = subprocess.run(f"{self.py_bin} --version".split(" "), check=True, capture_output=True,
                                         text=True).stdout.split(" ")[1].strip().split(".")
         if float(f'{python_version[0]}.{python_version[1]}') < 3.11:
             print(
-                f'{self.red_text("[-]")} Python version < 3.11 detected. This is known to cause issues. Please update '
-                f'python and try again.')
+                f'{self.red_text("[-]")} {self.cyan_text("Python")} version < 3.11 detected. This is a version known '
+                f'to cause issues. Please update {self.cyan_text("Python")} and try again.')
             sys.exit(1)
 
         # Parse args
@@ -2160,6 +2159,7 @@ class Kubenumerate:
             print(f'\t{self.red_text("[!]")} Containers Not Hardened')
             issues_raised["hardened"] = True
 
+        # TODO: implement a check that ignores some false positives when cloud provider manages kube-system
         # Containers Automount Service Account Token
         if self.automount:
             print(f'\t{self.red_text("[!]")} Containers Automount Service Account Token')
