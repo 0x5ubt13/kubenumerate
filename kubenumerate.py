@@ -35,7 +35,7 @@ class Kubenumerate:
                  kubiscan_path="/tmp/kubiscan/", kubiscan_py="", limits=True, namespace='-A',
                  out_path="/tmp/kubenumerate_out/", pkl_recovery="", pods="", pods_file="", privesc=False,
                  privileged=False, py_bin=sys.executable, requisites=None, sus_rbac=False, trivy_bin="",
-                 trivy_file="", verbosity=1, version="1.2.2", version_diff=0, vuln_image=False, wget_bin=""):
+                 trivy_file="", verbosity=1, version="1.2.3-dev", version_diff=0, vuln_image=False, wget_bin=""):
         """Initialize attributes"""
 
         if requisites is None:
@@ -71,6 +71,7 @@ class Kubenumerate:
         self.kubeconfig_path = kubeconfig_path
         self.kubectl_bin = kubectl_bin
         self.kubectl_path = kubectl_path
+        self.kubenumerate_dir = os.path.dirname(os.path.abspath(__file__))  # v1.2.3 addition
         self.kube_version = kube_version
         self.kubiscan_path = kubiscan_path
         self.kubiscan_py = kubiscan_py
@@ -964,7 +965,7 @@ class Kubenumerate:
         """Run ExtensiveRoleCheck if not connected to the cluster"""
 
         role_check_out_path = f'{self.out_path}ExtensiveRoleCheck_output.txt'
-        extensive_role_check_file_path = 'ExtensiveRoleCheck.py'
+        extensive_role_check_file_path = os.path.join(self.kubenumerate_dir, 'ExtensiveRoleCheck.py')
         try:
             command = (f"{self.py_bin} {extensive_role_check_file_path}"
                        f" --clusterRole clusterroles.json"
