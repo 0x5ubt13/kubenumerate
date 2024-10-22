@@ -31,7 +31,7 @@ class Kubenumerate:
                  host_os=platform.system(), host_arch="", inst_jq=False, inst_kubeaudit=False, inst_kubebench=False,
                  inst_kubectl=False, inst_kubiscan=False, inst_trivy=False, inst_wget=False, install=False, jq_bin="",
                  kubeaudit_bin="", kubeaudit_file="", kube_bench_bin="", kube_bench_file="", kubeconfig_path=None,
-                 kubectl_bin="kubectl", kubectl_path="/tmp/kubenumerate_out/kubectl_output/", kube_version="v1.31.0",
+                 kubectl_bin="kubectl", kubectl_path="/tmp/kubenumerate_out/kubectl_output/", kube_version="v1.31.1",
                  kubiscan_path="/tmp/kubiscan/", kubiscan_py="", limits=True, namespace='-A',
                  out_path="/tmp/kubenumerate_out/", pkl_recovery="", pods="", pods_file="", privesc=False,
                  privileged=False, py_bin=sys.executable, requisites=None, sus_rbac=False, trivy_bin="",
@@ -521,7 +521,7 @@ class Kubenumerate:
         if self.args.output is not None:
             self.out_path = f'{os.path.abspath(self.args.output)}/'
             self.kubectl_path = f'{os.path.abspath(self.args.output)}/kubectl_output/'
-
+        
         if self.args.namespace is not None and not "-A":
             self.namespace = f'-n {self.args.namespace}'
 
