@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 
 ARG PYTHON_VERSION=3.12.6
-FROM python:${PYTHON_VERSION}-slim as base
+FROM python:${PYTHON_VERSION}-slim AS base
 
 # Prevents Python from writing pyc files.
 ENV PYTHONDONTWRITEBYTECODE=1
@@ -60,11 +60,13 @@ RUN git clone https://github.com/Homebrew/brew ~/.linuxbrew/Homebrew \
 	&& eval $(~/.linuxbrew/bin/brew shellenv) \
 	&& brew --version \
 	&& mkdir ~/.kube/ \
-	# Install kubectl, kubeaudit and trivy
+	# Install kubectl, kubeaudit, trivy and kubelogin
 	&& brew install \
     		kubectl \
     		kubeaudit \
-    		trivy 
+    		trivy \
+            kubelogin \
+			az
 
 ENV PATH=/home/subtle/.linuxbrew/bin:/home/subtle/.linuxbrew/sbin:/home/subtle/.local/bin:$PATH
 
@@ -76,7 +78,6 @@ COPY --chown=subtle:subtle ./kubenumerate.py ./requirements.txt ./ExtensiveRoleC
 RUN pip install --upgrade pip \
     && export PATH=/home/subtle/.linuxbrew/bin:/home/subtle/.linuxbrew/sbin:/home/subtle/.local/bin:$PATH \
     && pip install -r ./requirements.txt --break-system-packages
-
 
 # Run the application.
 ENTRYPOINT [ "python3", "kubenumerate.py" ]

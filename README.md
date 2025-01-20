@@ -102,6 +102,26 @@ You will need to mount your `kubeconfig` file inside the container, then mount t
     printf "Removing container -> "; docker rm kubenumerate
     rm /tmp/config
 
+or, if you're using PowerShell on Windows:
+
+    # Create folder and prepare kubeconfig file and out directory
+    New-Item -Path "C:\tmp\kubenumerate_out" -ItemType Directory
+    Copy-Item -Path "$env:USERPROFILE\.kube\config" -Destination "C:\tmp\config"
+    icacls "C:\tmp\config" /grant Everyone:R
+    icacls "C:\tmp\kubenumerate_out" /grant Everyone:W
+    
+    # Run the program
+    docker run `
+        --network host `
+        --name kubenumerate `
+        -v C:\tmp\config:/home/subtle/.kube/config `
+        --mount type=bind,source=C:\tmp\kubenumerate_out,target=/tmp/kubenumerate_out `
+        gagarter/kubenumerate:1.2.3
+    
+    # Clean up
+    Write-Output "Removing container -> "; docker rm kubenumerate
+    Remove-Item -Path "C:\tmp\config"
+
 If you want to build the image yourself, simply clone the repo, `cd` into it, make any changes you want to the source code and use `docker build`:
 
     git clone https://github.com/0x5ubt13/kubenumerate.git
@@ -119,3 +139,7 @@ I developed a fully automated enumeration tool that performs infrastructure scan
 - [x] Containerise
 - [x] Offer the user to install all reqs for them
 - [ ] Clear all TODOs
+
+# Clean up
+Write-Output "Removing container -> "; docker rm kubenumerate
+Remove-Item -Path "C:\tmp\config"
