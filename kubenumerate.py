@@ -829,6 +829,12 @@ class Kubenumerate:
 
             with open(self.kube_bench_file, "w") as dummy_f:
                 json.dump(dummy_data, dummy_f)
+
+            if self.kubeaudit_file is None:
+                print(f'{self.cyan_text("[*]")} Kubeaudit not passed. Using empty json data.')
+                self.kubeaudit_file = "/tmp/kubeaudit_dummy_file.json"
+                with open(self.kubeaudit_file, "w") as dummy_f:
+                    json.dump(dummy_data, dummy_f)
             return
 
         self.launch_kubectl()
