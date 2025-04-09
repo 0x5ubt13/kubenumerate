@@ -31,11 +31,11 @@ class Kubenumerate:
                  host_os=platform.system(), host_arch="", inst_jq=False, inst_kubeaudit=False, inst_kubebench=False,
                  inst_kubectl=False, inst_kubiscan=False, inst_trivy=False, inst_wget=False, install=False, jq_bin="",
                  kubeaudit_bin="", kubeaudit_file="", kube_bench_bin="", kube_bench_file="", kubeconfig_path=None,
-                 kubectl_bin="kubectl", kubectl_path="/tmp/kubenumerate_out/kubectl_output/", kube_version="v1.31.0",
+                 kubectl_bin="kubectl", kubectl_path="/tmp/kubenumerate_out/kubectl_output/", kube_version="v1.32.2",
                  kubiscan_path="/tmp/kubiscan/", kubiscan_py="", limits=True, namespace='-A',
                  out_path="/tmp/kubenumerate_out/", pkl_recovery="", pods="", pods_file="", privesc=False,
                  privileged=False, py_bin=sys.executable, requisites=None, sus_rbac=False, trivy_bin="",
-                 trivy_file="", verbosity=1, version="1.2.2", version_diff=0, vuln_image=False, wget_bin=""):
+                 trivy_file="", verbosity=1, version="1.2.3", version_diff=0, vuln_image=False, wget_bin=""):
         """Initialize attributes"""
 
         if requisites is None:
@@ -1027,7 +1027,7 @@ class Kubenumerate:
             return
 
         current_latest = self.fetch_latest_kubernetes_version()
-        if not current_latest:
+        if current_latest is None:
             print(f'{self.red_text("[-]")} This will now default to a hard-coded version ({self.kube_version}). '
                   f'Although the developer tries to maintain {self.cyan_text("Kubenumerate")} updated, you should '
                   f'ensure this version is up-to-date, otherwise you might flag a false positive.')
