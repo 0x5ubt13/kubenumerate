@@ -12,3 +12,4 @@ logging
 re
 sys
 test_issues_dict.txt
+*.pyc
