@@ -60,10 +60,12 @@ Currently included tools:
       --verbosity VERBOSITY, -v VERBOSITY
                             Select a verbosity level. (0 = quiet | 1 = default | 2 = verbose/debug)
     
-## Installation
+## Installation (containerised version available below if you don't want to keep this on your system)
 
     git clone https://github.com/0x5ubt13/kubenumerate.git
     cd kubenumerate
+    python3 -m venv ./venv
+    source ./venv/bin/activate
     pip install -r requirements.txt
     chmod +x kubenumerate.py
     sudo ln -s "$(pwd)"/kubenumerate.py /usr/bin/kubenumerate # Or anywhere else in your $PATH, or add to your PATH so no sudo is involved
@@ -84,7 +86,7 @@ Run locally using extracted kubeaudit.json and pods.json (no kubeconfig file nee
 If you don't want to install everything in your system, a containerised version is available at [Docker Hub: gagarter/kubenumerate](https://hub.docker.com/r/gagarter/kubenumerate).
 You will need to mount your `kubeconfig` file inside the container, then mount the desired output folder inside the container, and after running, it will dump all the output in the mounted folder. All this can be done with the following example commands:
 
-    # Create folder and prepare kubeconfig file and out directory
+    # Create directory and prepare kubeconfig file and out directory
     mkdir /tmp/kubenumerate_out
     cp ~/.kube/config /tmp/config
     chmod a+r /tmp/config
@@ -116,7 +118,7 @@ or, if you're using PowerShell on Windows:
         --name kubenumerate `
         -v C:\tmp\config:/home/subtle/.kube/config `
         --mount type=bind,source=C:\tmp\kubenumerate_out,target=/tmp/kubenumerate_out `
-        gagarter/kubenumerate:1.2.3
+        gagarter/kubenumerate
     
     # Clean up
     Write-Output "Removing container -> "; docker rm kubenumerate
@@ -139,7 +141,3 @@ I developed a fully automated enumeration tool that performs infrastructure scan
 - [x] Containerise
 - [x] Offer the user to install all reqs for them
 - [ ] Clear all TODOs
-
-# Clean up
-Write-Output "Removing container -> "; docker rm kubenumerate
-Remove-Item -Path "C:\tmp\config"
