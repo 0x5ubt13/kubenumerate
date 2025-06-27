@@ -31,7 +31,7 @@ class Kubenumerate:
                  host_os=platform.system(), host_arch="", inst_jq=False, inst_kubeaudit=False, inst_kubebench=False,
                  inst_kubectl=False, inst_kubiscan=False, inst_trivy=False, inst_wget=False, install=False, jq_bin="",
                  kubeaudit_bin="", kubeaudit_file="", kube_bench_bin="", kube_bench_file="", kubeconfig_path=None,
-                 kubectl_bin="kubectl", kubectl_path="/tmp/kubenumerate_out/kubectl_output/", kube_version="v1.32.5",
+                 kubectl_bin="kubectl", kubectl_path="/tmp/kubenumerate_out/kubectl_output/", kube_version="v1.33.2",
                  kubiscan_path="/tmp/kubiscan/", kubiscan_py="", limits=True, namespace='-A',
                  out_path="/tmp/kubenumerate_out/", pkl_recovery="", pods="", pods_file="", privesc=False,
                  privileged=False, py_bin=sys.executable, requisites=None, sus_rbac=False, trivy_bin="",
@@ -153,7 +153,7 @@ class Kubenumerate:
                 super().__init__(self.message)
 
             def get_currently_supported_architectures(self):
-                return "\n\t".join(f"- {supported_arch}" for supported_arch in self.supported_architectures)
+                return "".join(f"\n\t- {supported_arch}" for supported_arch in self.supported_architectures)
 
         try:
             arch = platform.machine().lower()
@@ -162,13 +162,13 @@ class Kubenumerate:
                     match arch:
                         case "x86_64":
                             self.host_arch = "darwin_amd64"
-                        case "arm64":
+                        case "arm64" | "aarch64":
                             self.host_arch = "darwin_arm64"
                         case _:
                             raise ArchitectureNotSupported(f"macOS - {self.host_arch} not supported.")
                 case "Linux":
-                    if arch != "x86_64":
-                        raise ArchitectureNotSupported(f"Linux {self.host_arch} architecture not currently supported.")
+                    if arch not in ["x86_64", "amd64", "aarch64", "arm64", "x64", "x86_64-v3", "x86_64-v4"]:
+                        raise ArchitectureNotSupported(f"Linux {arch} architecture not currently supported.")
                     self.host_arch = "linux_amd64"
                 case "Windows" | "FreeBSD" | "OpenBSD" | _:
                     raise ArchitectureNotSupported(f"OS {self.host_os} not supported.")
