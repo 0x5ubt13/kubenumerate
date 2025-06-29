@@ -169,7 +169,11 @@ class Kubenumerate:
                 case "Linux":
                     if arch not in ["x86_64", "amd64", "aarch64", "arm64", "x64", "x86_64-v3", "x86_64-v4"]:
                         raise ArchitectureNotSupported(f"Linux {arch} architecture not currently supported.")
-                    self.host_arch = "linux_amd64"
+                    match arch:
+                        case "aarch64" | "arm64":
+                            self.host_arch = "linux_arm64"
+                        case _:
+                            self.host_arch = "linux_amd64"
                 case "Windows" | "FreeBSD" | "OpenBSD" | _:
                     raise ArchitectureNotSupported(f"OS {self.host_os} not supported.")
         except ArchitectureNotSupported as e:
@@ -377,9 +381,26 @@ class Kubenumerate:
         """Install the passed tool using brew, or install brew using bash"""
 
         print(f'\n{self.cyan_text("[*]")} Installing {tool}...')
-        shell = os.environ['SHELL']
-        c = f"(echo; echo \'eval \"$({self.brew_bin} shellenv)\"\') >> /home/{os.environ['USER']}/"
-
+        shell = ""
+        try:
+            shell = os.environ['SHELL']
+        except KeyError:
+            try: 
+                shell = shutil.which("bash")
+            except Exception as e:
+                print(f'{self.red_text("[-]")} Error: Could not determine the shell. Please set the SHELL environment '
+                      f'variable to your shell\'s path.')
+                sys.exit(1)
+        c = ""
+        try:
+            c = f"(echo; echo \'eval \"$({self.brew_bin} shellenv)\"\') >> /home/{os.environ['USER']}/"
+        except KeyError:
+            try: 
+                c = f"(echo; echo \'eval \"$({self.brew_bin} shellenv)\"\') >> {self.home_dir}/"
+            except Exception as e:
+                print(f'{self.red_text("[-]")} Error: Could not determine the home directory. Please set the HOME '
+                      f'environment variable to your home directory\'s path.')
+                sys.exit(1)
         if tool == "brew":
             try:
                 subprocess.run(
