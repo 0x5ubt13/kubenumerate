@@ -165,7 +165,7 @@ class Kubenumerate:
                         case "arm64" | "aarch64":
                             self.host_arch = "darwin_arm64"
                         case _:
-                            raise ArchitectureNotSupported(f"macOS - {self.host_arch} not supported.")
+                            raise ArchitectureNotSupported(f"macOS - {arch} not supported.")
                 case "Linux":
                     if arch not in ["x86_64", "amd64", "aarch64", "arm64", "x64", "x86_64-v3", "x86_64-v4"]:
                         raise ArchitectureNotSupported(f"Linux {arch} architecture not currently supported.")

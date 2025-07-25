@@ -3,81 +3,148 @@
 ARG PYTHON_VERSION=3.12.6
 FROM python:${PYTHON_VERSION}-slim AS base
 
-# Prevents Python from writing pyc files.
-ENV PYTHONDONTWRITEBYTECODE=1
+# Set environment variables
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    DEBIAN_FRONTEND=noninteractive \
+    LANG=en_US.UTF-8 \
+    LANGUAGE=en_US:en \
+    LC_ALL=en_US.UTF-8
 
-# Keeps Python from buffering stdout and stderr to avoid situations where
-# the application crashes without emitting any logs due to buffering.
-ENV PYTHONUNBUFFERED=1
+# Create non-privileged user early
+RUN groupadd --gid 10001 subtle && \ 
+    useradd --uid 10001 --gid subtle --shell /bin/bash --create-home subtle
 
-# From https://hub.docker.com/r/linuxbrew/linuxbrew/dockerfile: Install all needed packages to run brew and other tools
-RUN apt-get update \
-	&& apt-get install -y software-properties-common \
-	&& apt-get update \
-	&& apt-get install -y \
-        apt-utils \
-		bzip2 \
-		ca-certificates \
-		curl \
-		file \
-		fonts-dejavu-core \
-		g++ \
-		git \
+# Install system dependencies
+RUN apt-get update && \ 
+    apt-get install -y --no-install-recommends \
+        ca-certificates \
+        curl \
+        wget \
         jq \
-		locales \
-		make \
-		openssh-client \
-		patch \
-		sudo \
-		uuid-runtime \
-		wget \
-        zip \
-	&& rm -rf /var/lib/apt/lists/* \
-    # Get latest version of kube-bench directly from GitHub
-	&& curl -s https://api.github.com/repos/aquasecurity/kube-bench/releases/latest | jq -r '.assets[] | select(.name | test("amd64.deb")) | .browser_download_url' | wget -i - \
-    # planned upgrade: including rbac-police: curl -s https://api.github.com/repos/PaloAltoNetworks/rbac-police/releases/latest | jq -r '.assets[] | select(.name | test("linux_amd64")) | .browser_download_url' | wget -i - \
-    && sudo apt-get install -y ./kube-bench* \
-    && mkdir /tmp/kubiscan && curl -s https://api.github.com/repos/cyberark/KubiScan/releases/latest | jq -r '.zipball_url' | xargs wget -O /tmp/kubiscan/kubiscan.zip && unzip /tmp/kubiscan/kubiscan.zip -d /tmp/kubiscan/ && chmod -R 755 /tmp/kubiscan \
-	# Kinda defeating the best practices above, we need sudo later on
-	&& localedef -i en_US -f UTF-8 en_US.UTF-8 \
-	&& echo 'subtle ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers \
-	# Create a non-privileged user that the app will run under.
-	# See https://docs.docker.com/go/dockerfile-user-best-practices/
-	&& adduser \
-    	--disabled-password \
-    	--gecos "" \
-    	--home "/home/subtle" \
-    	--shell "/bin/bash" \
-    	--uid 10001 \
-    	subtle
+        git \
+        unzip \
+        sudo \
+        locales \
+        gnupg \
+        lsb-release && \
+    # Configure locale
+    localedef -i en_US -f UTF-8 en_US.UTF-8 && \
+    # Configure sudo for user
+    echo 'subtle ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers && \
+    # Clean up
+    apt-get autoremove -y && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
+# Install build dependencies
+RUN apt-get update && \ 
+    apt-get install -y --no-install-recommends \
+        build-essential \
+        g++ \
+        make \
+        patch \
+        file \
+        bzip2 && \
+    # Clean up
+    apt-get autoremove -y && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+
+# Install additional tools
+RUN apt-get update && \ 
+    apt-get install -y --no-install-recommends \
+        fonts-dejavu-core \
+        openssh-client \
+        uuid-runtime \
+        zip && \
+    # Clean up
+    apt-get autoremove -y && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+
+# Install kubectl
+RUN curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.31/deb/Release.key | \ 
+    gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg && \
+    echo 'deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.31/deb/ /' | \
+    tee /etc/apt/sources.list.d/kubernetes.list && \
+    apt-get update && \
+    apt-get install -y kubectl && \
+    apt-get autoremove -y && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+
+# Install Azure CLI
+RUN curl -sL https://aka.ms/InstallAzureCLIDeb | bash && \ 
+    apt-get autoremove -y && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+
+# Install kubeaudit
+RUN KUBEAUDIT_VERSION=$(curl -s https://api.github.com/repos/Shopify/kubeaudit/releases/latest | \ 
+        jq -r '.tag_name') && \
+    curl -fsSL "https://github.com/Shopify/kubeaudit/releases/download/${KUBEAUDIT_VERSION}/kubeaudit_${KUBEAUDIT_VERSION#v}_linux_amd64.tar.gz" | \
+    tar -xz -C /usr/local/bin kubeaudit && \
+    chmod +x /usr/local/bin/kubeaudit
+
+# Install Trivy
+RUN TRIVY_VERSION=$(curl -s https://api.github.com/repos/aquasecurity/trivy/releases/latest | \ 
+        jq -r '.tag_name') && \
+    curl -fsSL "https://github.com/aquasecurity/trivy/releases/download/${TRIVY_VERSION}/trivy_${TRIVY_VERSION#v}_Linux-64bit.tar.gz" | \
+    tar -xz -C /usr/local/bin trivy && \
+    chmod +x /usr/local/bin/trivy
+
+# Install kubelogin
+RUN KUBELOGIN_VERSION=$(curl -s https://api.github.com/repos/Azure/kubelogin/releases/latest | \ 
+        jq -r '.tag_name') && \
+    curl -fsSL "https://github.com/Azure/kubelogin/releases/download/${KUBELOGIN_VERSION}/kubelogin-linux-amd64.zip" \
+        -o /tmp/kubelogin.zip && \
+    unzip /tmp/kubelogin.zip -d /tmp/ && \
+    mv /tmp/bin/linux_amd64/kubelogin /usr/local/bin/ && \
+    chmod +x /usr/local/bin/kubelogin && \
+    rm -rf /tmp/kubelogin.zip /tmp/bin
+
+# Install kube-bench
+RUN KUBE_BENCH_URL=$(curl -s https://api.github.com/repos/aquasecurity/kube-bench/releases/latest | \ 
+        jq -r '.assets[] | select(.name | test("amd64.deb")) | .browser_download_url') && \
+    wget -O /tmp/kube-bench.deb "$KUBE_BENCH_URL" && \
+    apt-get update && \
+    apt-get install -y /tmp/kube-bench.deb && \
+    rm -f /tmp/kube-bench.deb && \
+    apt-get autoremove -y && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+
+# Install KubiScan
+RUN mkdir -p /tmp/kubiscan && \ 
+    KUBISCAN_URL=$(curl -s https://api.github.com/repos/cyberark/KubiScan/releases/latest | \
+        jq -r '.zipball_url') && \
+    wget -O /tmp/kubiscan/kubiscan.zip "$KUBISCAN_URL" && \
+    unzip /tmp/kubiscan/kubiscan.zip -d /tmp/kubiscan/ && \
+    chmod -R 755 /tmp/kubiscan && \
+    rm -f /tmp/kubiscan/kubiscan.zip
+
+# Switch to non-privileged user
 USER subtle
 
-# Create all needed folders for brew and kubeconfig
-RUN git clone https://github.com/Homebrew/brew ~/.linuxbrew/Homebrew \
-	&& mkdir ~/.linuxbrew/bin \
-	&& ln -s ../Homebrew/bin/brew ~/.linuxbrew/bin \
-	&& eval $(~/.linuxbrew/bin/brew shellenv) \
-	&& brew --version \
-	&& mkdir ~/.kube/ \
-	# Install kubectl, kubeaudit, trivy and kubelogin
-	&& brew install \
-    		kubectl \
-    		kubeaudit \
-    		trivy \
-            kubelogin \
-			az
+# Create kube config directory
+RUN mkdir -p ~/.kube/
 
-ENV PATH=/home/subtle/.linuxbrew/bin:/home/subtle/.linuxbrew/sbin:/home/subtle/.local/bin:$PATH
+# Set PATH to include /usr/local/bin for installed tools
+ENV PATH=/usr/local/bin:/home/subtle/.local/bin:$PATH
 
-WORKDIR /tmp/
+# Set working directory
+WORKDIR /app
 
-# Copy script, reqs and kubeconfig file inside the container
-COPY --chown=subtle:subtle ./kubenumerate.py ./requirements.txt ./ExtensiveRoleCheck.py ./
+# Copy Python requirements first (for better caching)
+COPY --chown=subtle:subtle requirements.txt .
 
-RUN pip install --upgrade pip \
-    && export PATH=/home/subtle/.linuxbrew/bin:/home/subtle/.linuxbrew/sbin:/home/subtle/.local/bin:$PATH \
-    && pip install -r ./requirements.txt --break-system-packages
+# Install Python dependencies
+RUN pip install --no-cache-dir --upgrade pip && \ 
+    pip install --no-cache-dir --user -r requirements.txt
 
-# Run the application.
-ENTRYPOINT [ "python3", "kubenumerate.py" ]
+# Copy application files
+COPY --chown=subtle:subtle kubenumerate.py ExtensiveRoleCheck.py ./
+
+# Set entrypoint
+ENTRYPOINT ["python3", "kubenumerate.py"]
