@@ -1,1 +1,1 @@
-{'version': False, 'hardened': False, 'automount': False, 'vuln_image': True, 'privileged': False, 'cis_detected': True, 'limits_set': False}
+{'version': True, 'hardened': True, 'automount': True, 'vuln_image': False, 'privileged': False, 'cis_detected': True, 'limits_set': True}
