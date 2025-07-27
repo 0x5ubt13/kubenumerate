@@ -18,6 +18,7 @@ import zipfile
 from datetime import datetime
 from packaging.version import Version
 from pathlib import Path
+import glob
 
 
 class Kubenumerate:
@@ -35,7 +36,7 @@ class Kubenumerate:
                  kubiscan_path="/tmp/kubiscan/", kubiscan_py="", limits=True, namespace='-A',
                  out_path="/tmp/kubenumerate_out/", pkl_recovery="", pods="", pods_file="", privesc=False,
                  privileged=False, py_bin=sys.executable, requisites=None, sus_rbac=False, trivy_bin="",
-                 trivy_file="", verbosity=1, version="1.2.3", version_diff=0, vuln_image=False, wget_bin=""):
+                 trivy_file="", verbosity=1, version="1.3.0-dev", version_diff=0, vuln_image=False, wget_bin=""):
         """Initialize attributes"""
 
         if requisites is None:
@@ -98,7 +99,7 @@ class Kubenumerate:
 
         # TODO: make no colour flag for those using a light mode terminal. Then in colour methods simply use black
         parser = argparse.ArgumentParser(
-            description='Uses local kubeconfig file to launch kubeaudit, kube-bench, kubectl, trivy and KubiScan '
+            description='Uses local kubeconfig file to launch kube-bench, kubectl, trivy and KubiScan '
                         'and parses all useful output to excel.')
         parser.add_argument(
             '--cheatsheet',
@@ -115,10 +116,6 @@ class Kubenumerate:
             '-e',
             help="Select a different name for your excel file. Default: kubenumerate_results_v1_0.xlsx",
             default='kubenumerate_results_v1_0.xlsx')
-        parser.add_argument(
-            '--kubeaudit-file',
-            '-f',
-            help="Select an input kubeaudit json file to parse instead of running kubeaudit using your kubeconfig file")
         parser.add_argument(
             '--kubeconfig',
             '-k',
@@ -548,17 +545,6 @@ class Kubenumerate:
         if self.args.dry_run:
             self.dry_run = True
 
-        if self.args.kubeaudit_file is not None:
-            # Read filename from flag
-            self.kubeaudit_file = self.args.kubeaudit_file
-            if self.verbosity > 0:
-                print(
-                    f'{self.green_text("[+]")} Using passed argument "{self.cyan_text(self.kubeaudit_file)}" file as '
-                    f'input file for kubeaudit to avoid sending unnecessary requests to the cluster.')
-        else:
-            # Use default
-            self.kubeaudit_file = f"{self.out_path}kubeaudit_all.json"
-
         # Set correct verbosity
         if self.args.verbosity != 1:
             self.verbosity = int(self.args.verbosity)
@@ -651,23 +637,6 @@ class Kubenumerate:
 
         # If set, use parsed filename
         self.excel_file = f"{self.out_path}{self.args.excel_out}"
-
-    def launch_kubeaudit(self):
-        """Check whether a previous kubeaudit json file already exists. If not, launch kubeaudit"""
-
-        # Check if exists
-        if os.path.exists(self.kubeaudit_file):
-            if self.verbosity > 0:
-                print(
-                    f'{self.green_text("[+]")} Using existing "{self.cyan_text(self.kubeaudit_file)}" kubeaudit file '
-                    f'as input file to avoid sending unnecessary requests to the client\'s cluster.')
-                print(
-                    f'{self.yellow_text("[!]")} If you want a fresh kubeaudit output file, run the following command '
-                    f'and run this program again:\n\t{self.yellow_text(f"rm {self.kubeaudit_file}")}')
-            return
-
-        # Launch it
-        self.get_kubeaudit_all()
 
     def launch_kube_bench(self):
         """Check whether a previous kube-bench json file already exists. If not, launch kube-bench"""
@@ -838,7 +807,7 @@ class Kubenumerate:
               f'{self.yellow_text(skipped)} came up empty so were not collected).')
 
     def launch_gatherer_tools(self):
-        """Launch kubeaudit, kube-bench and trivy"""
+        """Launch kube-bench and trivy (kubeaudit removed)"""
 
         # Kill switch for the flag --dry-run
         if self.dry_run:
@@ -850,16 +819,9 @@ class Kubenumerate:
 
             with open(self.kube_bench_file, "w") as dummy_f:
                 json.dump(dummy_data, dummy_f)
-
-            if self.kubeaudit_file is None:
-                print(f'{self.cyan_text("[*]")} Kubeaudit not passed. Using empty json data.')
-                self.kubeaudit_file = "/tmp/kubeaudit_dummy_file.json"
-                with open(self.kubeaudit_file, "w") as dummy_f:
-                    json.dump(dummy_data, dummy_f)
             return
 
         self.launch_kubectl()
-        self.launch_kubeaudit()
         self.launch_kube_bench()
 
     def clean_up(self):
@@ -871,7 +833,7 @@ class Kubenumerate:
                 print(f"File '{self.kube_bench_file}' deleted successfully.")
 
     def run(self):
-        """Class main method. Launch kubeaudit, kube-bench and trivy and parse them"""
+        """Class main method. Launch kube-bench and trivy and parse them (kubeaudit removed)"""
 
         # Abort immediately if python 3.11 is not being used
         self.py_bin = "python3" if self.py_bin is None else self.py_bin  # Triple check python is valid
@@ -896,16 +858,14 @@ class Kubenumerate:
                 f"\nIf your testing host doesn't allow having installed other software than kubeaudit, you can extract "
                 f"all you need for {self.cyan_text('Kubenumerate')} to work with the following one-liner:")
             print(
-                f'{self.cyan_text("kubectl")} get po {self.green_text("-A -o")} json {self.cyan_text(">")} '
-                f'{self.yellow_text("pods.json")}; {self.cyan_text("kubeaudit")} all -p json {self.cyan_text(">")} '
-                f'{self.yellow_text("kubeaudit_out.json")}; {self.cyan_text("echo")} "Done"\n\n'
+                f'{self.cyan_text("kubectl")} get po {self.green_text("-A -o")} json {self.cyan_text(">")}'
+                f'{self.yellow_text("pods.json")}; {self.cyan_text("echo")} "Done"\n\n'
                 f'Then from your host:\n{self.cyan_text("scp")} {self.green_text("-i")} '
                 f'{self.yellow_text("<rsa_id> <remote_user>")}@{self.yellow_text("<10.10.10.10>")}:'
                 f'{self.yellow_text("<folder>")}*.json .\n')
             print(
                 f'And finally use kubenumerate with the data you just extracted:\n{self.cyan_text("kubenumerate")} '
-                f'{self.green_text("--dry-run --trivy-file")} {self.yellow_text("pods.json")} '
-                f'{self.green_text("--kubeaudit-file")} {self.yellow_text("kubeaudit_out.json")}')
+                f'{self.green_text("--dry-run --trivy-file")} {self.yellow_text("pods.json")}')
             sys.exit(0)
 
         # Make sure all necessary software is installed
@@ -918,53 +878,47 @@ class Kubenumerate:
 
         # Run tools
         if self.verbosity > 0:
-            print(f'\n{self.cyan_text("[*]")} ----- Running kubectl, kubeaudit and kube-bench -----')
+            print(f'\n{self.cyan_text("[*]")} ----- Running kubectl and kube-bench -----')
         self.launch_gatherer_tools()
 
         # Write to Excel file all findings
         if self.verbosity > 0:
             print(
-                f'\n{self.cyan_text("[*]")} ----- Parsing kubeaudit, kube-bench and trivy output, please wait... -----')
+                f'\n{self.cyan_text("[*]")} ----- Parsing kube-bench and trivy output, please wait... -----')
         # Check versions difference
         self.kubernetes_version_check()
-        with open(self.kubeaudit_file, "r") as kubeaudit_f:
-            with open(self.kube_bench_file, "r") as kube_bench_f:
-                with pd.ExcelWriter(self.excel_file, engine='xlsxwriter', mode="w") as writer:
-                    # Make dataframe for Kubeaudit
-                    kubeaudit_df = pd.read_json(kubeaudit_f, lines=True)
-
-                    # Run all Kubeaudit methods
-                    self.apparmor(kubeaudit_df, writer)
-                    self.asat(kubeaudit_df, writer)
-                    self.caps(kubeaudit_df, writer)
-                    self.dep_api(kubeaudit_df, writer)
-                    self.host_ns(kubeaudit_df, writer)
-                    self.limits(kubeaudit_df, writer)
-                    self.mounts(kubeaudit_df, writer)
-                    self.net_pols(kubeaudit_df, writer)
-                    self.non_root(kubeaudit_df, writer)
-                    self.privesc(kubeaudit_df, writer)
-                    self.root_fs(kubeaudit_df, writer)
-                    self.seccomp(kubeaudit_df, writer)
+        # Generate local kubeaudit-equivalent findings from kubectl output
+        kubeaudit_df = self.generate_kubeaudit_equivalent_df_from_kubectl()
+        with open(self.kube_bench_file, "r") as kube_bench_f:
+            with pd.ExcelWriter(self.excel_file, engine='xlsxwriter', mode="w") as writer:
+                # Run all Kubeaudit-equivalent methods
+                self.apparmor(kubeaudit_df, writer)
+                self.asat(kubeaudit_df, writer)
+                self.caps(kubeaudit_df, writer)
+                self.dep_api(kubeaudit_df, writer)
+                self.host_ns(kubeaudit_df, writer)
+                self.limits(kubeaudit_df, writer)
+                self.mounts(kubeaudit_df, writer)
+                self.net_pols(kubeaudit_df, writer)
+                self.non_root(kubeaudit_df, writer)
+                self.privesc(kubeaudit_df, writer)
+                self.root_fs(kubeaudit_df, writer)
+                self.seccomp(kubeaudit_df, writer)
+                if self.verbosity > 0:
+                    print(f'{self.green_text("[+]")} {self.cyan_text("Kubeaudit-equivalent checks")} successfully parsed.')
+                # Run Kube-bench methods
+                if not self.dry_run:
+                    kube_bench_dict = json.load(kube_bench_f)
+                    kube_bench_df = pd.json_normalize(kube_bench_dict, record_path=['Controls', 'tests', 'results'])
+                    self.cis(kube_bench_df, writer)
                     if self.verbosity > 0:
-                        print(f'{self.green_text("[+]")} {self.cyan_text("Kubeaudit")} successfully parsed.')
-
-                    # Run Kube-bench methods
-                    if not self.dry_run:
-                        kube_bench_dict = json.load(kube_bench_f)
-                        kube_bench_df = pd.json_normalize(kube_bench_dict, record_path=['Controls', 'tests', 'results'])
-                        self.cis(kube_bench_df, writer)
-                        if self.verbosity > 0:
-                            print(f'{self.green_text("[+]")} {self.cyan_text("Kube-bench")} successfully parsed.')
-
-                    # Parse all pods for Trivy
-                    self.parse_all_pods()
-
-                    # Run Trivy methods
-                    self.trivy_parser(writer)
-                    if self.verbosity > 0:
-                        print(f'{self.green_text("[+]")} {self.cyan_text("Trivy")} successfully parsed.')
-
+                        print(f'{self.green_text("[+]")} {self.cyan_text("Kube-bench")} successfully parsed.')
+                # Parse all pods for Trivy
+                self.parse_all_pods()
+                # Run Trivy methods
+                self.trivy_parser(writer)
+                if self.verbosity > 0:
+                    print(f'{self.green_text("[+]")} {self.cyan_text("Trivy")} successfully parsed.')
         if self.verbosity >= 0:
             print(f'{self.green_text("[+]")} Done! All output successfully saved to {self.cyan_text(self.excel_file)}.')
 
@@ -1108,31 +1062,6 @@ class Kubenumerate:
     @staticmethod
     def yellow_text(text):
         return f'\033[93m{text}\033[0m'
-
-    def get_kubeaudit_all(self):
-        """Run 'kubeaudit all' command and save output to a file"""
-
-        if self.verbosity > 0:
-            print(f'{self.cyan_text("[*]")} Running kubeaudit, please wait...')
-
-        if self.args.kubeconfig is not None:
-            self.kubeaudit_bin = f'{self.kubeaudit_bin} --kubeconfig {self.kubeconfig_path}'
-
-        command = f"{self.kubeaudit_bin} all -p json"
-        process = subprocess.Popen(command.split(" "), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-        stdout, stderr = process.communicate()
-
-        if stderr is not None:
-            # Raise error
-            if self.verbosity > 1:
-                print(f'{self.red_text("[-]")} Error running kubeaudit: {stderr}')
-
-        # Save the output to a file
-        with open(self.kubeaudit_file, "w") as output_kubeaudit_file:
-            output_kubeaudit_file.write(stdout.decode("utf-8"))
-
-        if self.verbosity > 0:
-            print(f'{self.green_text("[+]")} Done. Kubeaudit output saved to {self.cyan_text(self.kubeaudit_file)}')
 
     def get_kubebench_output(self):
         """Run 'kube-bench run --targets=node,policies' command and return pointer to output file location"""
@@ -2265,6 +2194,324 @@ class Kubenumerate:
             f'{self.cyan_text(banner)}\n'
             f'\t     Kubenumerate\n' 
             f'\t  {self.green_text("By 0x5ubt13")} {self.yellow_text(f"v{self.version}")}\n')
+
+    def generate_kubeaudit_equivalent_df_from_kubectl(self):
+        """
+        Parse kubectl output (pods, deployments, etc.) and generate a DataFrame with the columns expected by the
+        kubeaudit check methods. This replaces the need for kubeaudit output.
+        """
+        import pandas as pd
+        findings = []
+        # Static mappings for deprecated APIs and sensitive mount paths
+        deprecated_apis = {
+            # Example: (apiVersion, kind): (introduced_major, introduced_minor, deprecated_major, deprecated_minor, removed_major, removed_minor)
+            ("apps/v1beta1", "Deployment"): (1, 6, 1, 9, 1, 16),
+            ("extensions/v1beta1", "Deployment"): (1, 2, 1, 9, 1, 16),
+            ("extensions/v1beta1", "DaemonSet"): (1, 2, 1, 9, 1, 16),
+            ("extensions/v1beta1", "ReplicaSet"): (1, 2, 1, 9, 1, 16),
+            ("extensions/v1beta1", "Ingress"): (1, 2, 1, 14, 1, 22),
+            # Add more as needed
+        }
+        sensitive_mount_paths = ["/etc", "/proc", "/var/run/docker.sock", "/var/run/cri.sock", "/root", "/var/lib"]
+        resource_files = glob.glob(f"{self.kubectl_path}*.json")
+        for resource_file in resource_files:
+            if resource_file.endswith("all_output.json") or resource_file.endswith("cluster_version.txt"):
+                continue
+            try:
+                with open(resource_file, "r") as f:
+                    data = json.load(f)
+                items = data.get("items", [])
+                for item in items:
+                    kind = item.get("kind", "")
+                    api_version = item.get("apiVersion", "")
+                    metadata = item.get("metadata", {})
+                    spec = item.get("spec", {})
+                    namespace = metadata.get("namespace", "default")
+                    name = metadata.get("name", "")
+                    # Deprecated API check
+                    if (api_version, kind) in deprecated_apis:
+                        intro_maj, intro_min, depr_maj, depr_min, rem_maj, rem_min = deprecated_apis[(api_version, kind)]
+                        findings.append({
+                            "AuditResultName": "DeprecatedAPIUsed",
+                            "ResourceNamespace": namespace,
+                            "ResourceKind": kind,
+                            "ResourceName": name,
+                            "IntroducedMajor": intro_maj,
+                            "IntroducedMinor": intro_min,
+                            "DeprecatedMajor": depr_maj,
+                            "DeprecatedMinor": depr_min,
+                            "RemovedMajor": rem_maj,
+                            "RemovedMinor": rem_min,
+                            "ResourceApiVersion": api_version,
+                            "msg": f"{kind} uses deprecated API version {api_version}.",
+                        })
+                    # Pod-level and template checks
+                    pod_spec = spec.get("template", {}).get("spec", spec)  # For controllers, use template.spec
+                    containers = pod_spec.get("containers", [])
+                    # AppArmor, Seccomp, ASAT, Capabilities, Limits, Mounts, Non-root, Privesc, Privileged, RootFS
+                    for container in containers:
+                        cname = container.get("name", "")
+                        security_ctx = container.get("securityContext", {})
+                        # AppArmor
+                        apparmor_ann = None
+                        anns = item.get("metadata", {}).get("annotations", {})
+                        if not anns and "template" in spec:
+                            anns = spec["template"].get("metadata", {}).get("annotations", {})
+                        apparmor_key = f"container.apparmor.security.beta.kubernetes.io/{cname}"
+                        if apparmor_key in anns:
+                            apparmor_ann = anns[apparmor_key]
+                            if apparmor_ann == "unconfined":
+                                findings.append({
+                                    "AuditResultName": "AppArmorDisabled",
+                                    "ResourceNamespace": namespace,
+                                    "ResourceKind": kind,
+                                    "ResourceName": name,
+                                    "Container": cname,
+                                    "AnnotationValue": apparmor_ann,
+                                    "msg": "AppArmor is disabled (unconfined).",
+                                })
+                        else:
+                            findings.append({
+                                "AuditResultName": "AppArmorAnnotationMissing",
+                                "ResourceNamespace": namespace,
+                                "ResourceKind": kind,
+                                "ResourceName": name,
+                                "Container": cname,
+                                "MissingAnnotation": apparmor_key,
+                                "msg": "AppArmor annotation missing.",
+                            })
+                        # Seccomp
+                        seccomp_ann = anns.get("seccomp.security.alpha.kubernetes.io/pod")
+                        if not seccomp_ann and not pod_spec.get("securityContext", {}).get("seccompProfile") and not security_ctx.get("seccompProfile"):
+                            findings.append({
+                                "AuditResultName": "SeccompProfileMissing",
+                                "ResourceNamespace": namespace,
+                                "ResourceKind": kind,
+                                "ResourceName": name,
+                                "Container": cname,
+                                "msg": "Seccomp profile missing.",
+                            })
+                        # AutomountServiceAccountToken
+                        automount = pod_spec.get("automountServiceAccountToken", True)
+                        sa_name = pod_spec.get("serviceAccountName", "default")
+                        if automount and sa_name == "default":
+                            findings.append({
+                                "AuditResultName": "AutomountServiceAccountTokenTrueAndDefaultSA",
+                                "ResourceNamespace": namespace,
+                                "ResourceKind": kind,
+                                "ResourceName": name,
+                                "msg": "Pod automounts service account token and uses default SA.",
+                            })
+                        # Capabilities
+                        if not security_ctx or not security_ctx.get("capabilities"):
+                            findings.append({
+                                "AuditResultName": "CapabilityOrSecurityContextMissing",
+                                "ResourceNamespace": namespace,
+                                "ResourceKind": kind,
+                                "ResourceName": name,
+                                "Container": cname,
+                                "msg": "Missing securityContext or capabilities.",
+                            })
+                        else:
+                            caps = security_ctx.get("capabilities", {})
+                            if "add" in caps and caps["add"]:
+                                findings.append({
+                                    "AuditResultName": "CapabilityAdded",
+                                    "ResourceNamespace": namespace,
+                                    "ResourceKind": kind,
+                                    "ResourceName": name,
+                                    "Container": cname,
+                                    "Metadata": str(caps["add"]),
+                                    "msg": f"Capabilities added: {caps['add']}",
+                                })
+                            if not ("drop" in caps and "ALL" in caps["drop"]):
+                                findings.append({
+                                    "AuditResultName": "CapabilityShouldDropAll",
+                                    "ResourceNamespace": namespace,
+                                    "ResourceKind": kind,
+                                    "ResourceName": name,
+                                    "Container": cname,
+                                    "msg": "Container should drop all capabilities.",
+                                })
+                        # Limits
+                        resources = container.get("resources", {})
+                        limits = resources.get("limits", {})
+                        if not limits:
+                            findings.append({
+                                "AuditResultName": "LimitsNotSet",
+                                "ResourceNamespace": namespace,
+                                "ResourceKind": kind,
+                                "ResourceName": name,
+                                "Container": cname,
+                                "msg": "No resource limits set.",
+                            })
+                        if "cpu" not in limits:
+                            findings.append({
+                                "AuditResultName": "LimitsCPUNotSet",
+                                "ResourceNamespace": namespace,
+                                "ResourceKind": kind,
+                                "ResourceName": name,
+                                "Container": cname,
+                                "msg": "No CPU limit set.",
+                            })
+                        # Mounts
+                        for vol_mount in container.get("volumeMounts", []):
+                            mount_path = vol_mount.get("mountPath", "")
+                            for sensitive in sensitive_mount_paths:
+                                if mount_path.startswith(sensitive):
+                                    findings.append({
+                                        "AuditResultName": "SensitivePathsMounted",
+                                        "MountName": vol_mount.get("name", ""),
+                                        "MountPath": mount_path,
+                                        "MountReadOnly": vol_mount.get("readOnly", False),
+                                        "MountVolume": vol_mount.get("name", ""),
+                                        "MountVolumeHostPath": "",  # Could be filled by matching with volumes
+                                        "ResourceNamespace": namespace,
+                                        "ResourceKind": kind,
+                                        "ResourceName": name,
+                                        "Container": cname,
+                                        "msg": f"Sensitive path mounted: {mount_path}",
+                                    })
+                        # Non-root
+                        pod_sc = pod_spec.get("securityContext", {})
+                        run_as_non_root = security_ctx.get("runAsNonRoot")
+                        run_as_user = security_ctx.get("runAsUser")
+                        pod_run_as_non_root = pod_sc.get("runAsNonRoot")
+                        pod_run_as_user = pod_sc.get("runAsUser")
+                        if run_as_non_root is None and pod_run_as_non_root is None:
+                            findings.append({
+                                "AuditResultName": "RunAsNonRootPSCNilCSCNil",
+                                "ResourceNamespace": namespace,
+                                "ResourceKind": kind,
+                                "ResourceName": name,
+                                "Container": cname,
+                                "msg": "runAsNonRoot not set in Pod or Container SecurityContext.",
+                            })
+                        if run_as_user == 0:
+                            findings.append({
+                                "AuditResultName": "RunAsUserCSCRoot",
+                                "ResourceNamespace": namespace,
+                                "ResourceKind": kind,
+                                "ResourceName": name,
+                                "Container": cname,
+                                "msg": "Container runs as UID 0.",
+                            })
+                        if pod_run_as_user == 0:
+                            findings.append({
+                                "AuditResultName": "RunAsUserPSCRoot",
+                                "ResourceNamespace": namespace,
+                                "ResourceKind": kind,
+                                "ResourceName": name,
+                                "Container": cname,
+                                "msg": "Pod runs as UID 0.",
+                            })
+                        # Privilege escalation
+                        ape = security_ctx.get("allowPrivilegeEscalation")
+                        if ape is None:
+                            findings.append({
+                                "AuditResultName": "AllowPrivilegeEscalationNil",
+                                "ResourceNamespace": namespace,
+                                "ResourceKind": kind,
+                                "ResourceName": name,
+                                "Container": cname,
+                                "msg": "allowPrivilegeEscalation not set.",
+                            })
+                        elif ape is True:
+                            findings.append({
+                                "AuditResultName": "AllowPrivilegeEscalationTrue",
+                                "ResourceNamespace": namespace,
+                                "ResourceKind": kind,
+                                "ResourceName": name,
+                                "Container": cname,
+                                "msg": "allowPrivilegeEscalation is true.",
+                            })
+                        # Privileged
+                        privileged = security_ctx.get("privileged")
+                        if privileged is None:
+                            findings.append({
+                                "AuditResultName": "PrivilegedNil",
+                                "ResourceNamespace": namespace,
+                                "ResourceKind": kind,
+                                "ResourceName": name,
+                                "Container": cname,
+                                "msg": "privileged not set.",
+                            })
+                        elif privileged is True:
+                            findings.append({
+                                "AuditResultName": "PrivilegedTrue",
+                                "ResourceNamespace": namespace,
+                                "ResourceKind": kind,
+                                "ResourceName": name,
+                                "Container": cname,
+                                "msg": "privileged is true.",
+                            })
+                        # Root filesystem
+                        ro_rootfs = security_ctx.get("readOnlyRootFilesystem")
+                        if not ro_rootfs:
+                            findings.append({
+                                "AuditResultName": "ReadOnlyRootFilesystemNil",
+                                "ResourceNamespace": namespace,
+                                "ResourceKind": kind,
+                                "ResourceName": name,
+                                "Container": cname,
+                                "msg": "readOnlyRootFilesystem not set or false.",
+                            })
+                    # Host namespace
+                    if pod_spec.get("hostPID") is True:
+                        findings.append({
+                            "AuditResultName": "NamespaceHostPIDTrue",
+                            "ResourceNamespace": namespace,
+                            "ResourceKind": kind,
+                            "ResourceName": name,
+                            "msg": "hostPID is true.",
+                        })
+                    if pod_spec.get("hostNetwork") is True:
+                        findings.append({
+                            "AuditResultName": "NamespaceHostNetworkTrue",
+                            "ResourceNamespace": namespace,
+                            "ResourceKind": kind,
+                            "ResourceName": name,
+                            "msg": "hostNetwork is true.",
+                        })
+                    # NetworkPolicies (global, not per pod)
+                    if kind == "NetworkPolicy":
+                        spec_policy = item.get("spec", {})
+                        pod_selector = spec_policy.get("podSelector", {})
+                        policy_types = spec_policy.get("policyTypes", [])
+                        if "Ingress" in policy_types and not spec_policy.get("ingress"):
+                            findings.append({
+                                "AuditResultName": "MissingDefaultDenyIngressAndEgressNetworkPolicy",
+                                "ResourceKind": kind,
+                                "ResourceName": name,
+                                "msg": "No default deny ingress policy.",
+                            })
+                        if "Egress" in policy_types and not spec_policy.get("egress"):
+                            findings.append({
+                                "AuditResultName": "MissingDefaultDenyIngressAndEgressNetworkPolicy",
+                                "ResourceKind": kind,
+                                "ResourceName": name,
+                                "msg": "No default deny egress policy.",
+                            })
+                        # Allow all egress
+                        if "Egress" in policy_types and spec_policy.get("egress") == [{}]:
+                            findings.append({
+                                "AuditResultName": "AllowAllEgressNetworkPolicyExists",
+                                "ResourceKind": kind,
+                                "ResourceName": name,
+                                "msg": "Allow all egress policy exists.",
+                            })
+            except Exception as e:
+                if self.verbosity > 1:
+                    print(f"Error parsing {resource_file}: {e}")
+        # Return as DataFrame with expected columns (even if empty)
+        columns = [
+            "AuditResultName", "ResourceNamespace", "ResourceKind", "ResourceName", "Container",
+            "AnnotationValue", "MissingAnnotation", "Metadata", "IntroducedMajor", "IntroducedMinor",
+            "DeprecatedMajor", "DeprecatedMinor", "RemovedMajor", "RemovedMinor", "ResourceApiVersion",
+            "MountName", "MountPath", "MountReadOnly", "MountVolume", "MountVolumeHostPath", "msg"
+        ]
+        df = pd.DataFrame(findings, columns=columns)
+        return df
 
 
 def main():
