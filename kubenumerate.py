@@ -20,6 +20,14 @@ from packaging.version import Version
 from pathlib import Path
 import glob
 
+# Import version management
+try:
+    from version import get_version
+except ImportError:
+    # Fallback if version.py is not available
+    def get_version():
+        return "1.3.0-dev"
+
 
 class Kubenumerate:
     """ A class to automatically launch and parse several Kubernetes security auditing tools, by Subtle.
@@ -36,7 +44,7 @@ class Kubenumerate:
                  kubiscan_path="/tmp/kubiscan/", kubiscan_py="", limits=True, namespace='-A',
                  out_path="/tmp/kubenumerate_out/", pkl_recovery="", pods="", pods_file="", privesc=False,
                  privileged=False, py_bin=sys.executable, requisites=None, sus_rbac=False, trivy_bin="",
-                 trivy_file="", verbosity=1, version="1.3.0-dev", version_diff=0, vuln_image=False, wget_bin=""):
+                 trivy_file="", verbosity=1, version=None, version_diff=0, vuln_image=False, wget_bin=""):
         """Initialize attributes"""
 
         if requisites is None:
@@ -89,7 +97,8 @@ class Kubenumerate:
         self.pkl_recovery = pkl_recovery
         self.py_bin = py_bin
         self.verbosity = verbosity
-        self.version = version
+        # Use dynamic version management if no version is provided
+        self.version = version if version is not None else get_version()
         self.version_diff = version_diff
         self.vuln_image = vuln_image
         self.wget_bin = wget_bin

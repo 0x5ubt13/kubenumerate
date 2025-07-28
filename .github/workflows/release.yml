@@ -1,0 +1,89 @@
+name: Create Release
+
+on:
+  push:
+    tags: [ 'v*' ]
+
+jobs:
+  create-release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.12'
+    
+    - name: Get version from tag
+      id: version
+      run: |
+        VERSION=${GITHUB_REF#refs/tags/v}
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
+        echo "VERSION=$VERSION" >> $GITHUB_ENV
+    
+    - name: Update VERSION file for release
+      run: |
+        echo "${{ steps.version.outputs.version }}" > VERSION
+    
+    - name: Generate changelog
+      id: changelog
+      run: |
+        # Get commits since last tag
+        PREVIOUS_TAG=$(git describe --tags --abbrev=0 HEAD~1 2>/dev/null || echo "")
+        if [ -z "$PREVIOUS_TAG" ]; then
+          CHANGELOG=$(git log --oneline --no-merges)
+        else
+          CHANGELOG=$(git log --oneline --no-merges ${PREVIOUS_TAG}..HEAD)
+        fi
+        echo "changelog<<EOF" >> $GITHUB_OUTPUT
+        echo "$CHANGELOG" >> $GITHUB_OUTPUT
+        echo "EOF" >> $GITHUB_OUTPUT
+    
+    - name: Create Release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ github.ref }}
+        release_name: Release ${{ steps.version.outputs.version }}
+        body: |
+          ## Changes in this release
+          
+          ${{ steps.changelog.outputs.changelog }}
+          
+          ## Installation
+          
+          ```bash
+          # Download the latest version
+          wget https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/kubenumerate-${{ steps.version.outputs.version }}.py
+          chmod +x kubenumerate-${{ steps.version.outputs.version }}.py
+          
+          # Or use Docker
+          docker pull ${{ secrets.DOCKER_USERNAME }}/kubenumerate:${{ steps.version.outputs.version }}
+          ```
+        draft: false
+        prerelease: false
+    
+    - name: Upload release assets
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: ./kubenumerate.py
+        asset_name: kubenumerate-${{ steps.version.outputs.version }}.py
+        asset_content_type: text/plain
+    
+    - name: Commit version update
+      run: |
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+        git add VERSION
+        git commit -m "Update VERSION for release ${{ steps.version.outputs.version }}"
+        git push 
