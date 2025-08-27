@@ -28,7 +28,7 @@ jobs:
         python-version: ${{ env.PYTHON_VERSION }}
     
     - name: Cache pip dependencies
-      uses: actions/cache@v3
+      uses: actions/cache@v4
       with:
         path: ~/.cache/pip
         key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
@@ -60,7 +60,7 @@ jobs:
         python -m pytest tests/ -v --cov=kubenumerate --cov-report=xml --cov-report=html
     
     - name: Upload coverage reports
-      uses: codecov/codecov-action@v3
+      uses: codecov/codecov-action@v4
       with:
         file: ./coverage.xml
         flags: unittests
@@ -72,7 +72,7 @@ jobs:
         python -c "from kubenumerate import Kubenumerate; k = Kubenumerate(); print(f'Version: {k.version}')"
     
     - name: Upload test artifacts
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       if: always()
       with:
         name: test-results
