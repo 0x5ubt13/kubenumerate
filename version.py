@@ -144,7 +144,7 @@ def get_version() -> str:
         return version
     
     # Default fallback
-    return "1.3.0-dev"
+    return "2.0.0"
 
 
 def update_version_file(version: str) -> None:
@@ -153,7 +153,7 @@ def update_version_file(version: str) -> None:
     version_file.write_text(version + "\n")
 
 
-def create_git_tag(version: str, message: str = None) -> None:
+def create_git_tag(version: str, message: Optional[str] = None) -> None:
     """Create a git tag for the given version."""
     if not message:
         message = f"Release version {version}"

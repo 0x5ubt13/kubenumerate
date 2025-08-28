@@ -10,7 +10,6 @@ import requests
 import shutil
 import subprocess
 import sys
-import tarfile
 import time
 import platform
 import yaml
@@ -19,13 +18,14 @@ from datetime import datetime
 from packaging.version import Version
 from pathlib import Path
 import glob
+from typing import Any, Dict, List, Optional, Tuple
 
 # Import version management
 try:
     from version import get_version
 except ImportError:
     # Fallback if version.py is not available
-    def get_version():
+    def get_version() -> str:
         return "1.3.0-dev"
 
 
@@ -36,58 +36,58 @@ class Kubenumerate:
 
     def __init__(
         self,
-        args="",
-        automount=False,
-        brew_bin="",
-        brew_path="",
-        cis=False,
-        cluster_version="",
-        date=datetime.now().strftime("%b%y"),
-        depr_api=False,
-        dry_run=False,
-        excel_file="kubenumerate_results_v1_0.xlsx",
-        home_dir=Path.home(),
-        hardened=True,
-        host_os=platform.system(),
-        host_arch="",
-        inst_jq=False,
-        inst_kubeaudit=False,
-        inst_kubebench=False,
-        inst_kubectl=False,
-        inst_kubiscan=False,
-        inst_trivy=False,
-        inst_wget=False,
-        install=False,
-        jq_bin="",
-        kubeaudit_bin="",
-        kubeaudit_file="",
-        kube_bench_bin="",
-        kube_bench_file="",
-        kubeconfig_path=None,
-        kubectl_bin="kubectl",
-        kubectl_path="/tmp/kubenumerate_out/kubectl_output/",
-        kube_version="v1.33.3",
-        kubiscan_path="/tmp/kubiscan/",
-        kubiscan_py="",
-        limits=True,
-        namespace="-A",
-        out_path="/tmp/kubenumerate_out/",
-        pkl_recovery="",
-        pods="",
-        pods_file="",
-        privesc=False,
-        privileged=False,
-        py_bin=sys.executable,
-        requisites=None,
-        sus_rbac=False,
-        trivy_bin="",
-        trivy_file="",
-        verbosity=1,
-        version=None,
-        version_diff=0,
-        vuln_image=False,
-        wget_bin="",
-    ):
+        args: argparse.Namespace = argparse.Namespace(),
+        automount: bool = False,
+        brew_bin: Optional[str] = "",
+        brew_path: str = "",
+        cis: bool = False,
+        cluster_version: Optional[str] = "",
+        date: str = datetime.now().strftime("%b%y"),
+        depr_api: bool = False,
+        dry_run: bool = False,
+        excel_file: str = "kubenumerate_results_v1_0.xlsx",
+        home_dir: Path = Path.home(),
+        hardened: bool = True,
+        host_os: str = platform.system(),
+        host_arch: str = "",
+        inst_jq: bool = False,
+        inst_kubeaudit: bool = False,
+        inst_kubebench: bool = False,
+        inst_kubectl: bool = False,
+        inst_kubiscan: bool = False,
+        inst_trivy: bool = False,
+        inst_wget: bool = False,
+        install: bool = False,
+        jq_bin: str = "",
+        kubeaudit_bin: str = "",
+        kubeaudit_file: str = "",
+        kube_bench_bin: str = "",
+        kube_bench_file: str = "",
+        kubeconfig_path: Optional[str] = None,
+        kubectl_bin: str = "kubectl",
+        kubectl_path: str = "/tmp/kubenumerate_out/kubectl_output/",
+        kube_version: str = "v1.33.3",
+        kubiscan_path: str = "/tmp/kubiscan/",
+        kubiscan_py: str = "",
+        limits: bool = True,
+        namespace: str = "-A",
+        out_path: str = "/tmp/kubenumerate_out/",
+        pkl_recovery: str = "",
+        pods: Dict[str, Any] = {},
+        pods_file: str = "",
+        privesc: bool = False,
+        privileged: bool = False,
+        py_bin: str = sys.executable,
+        requisites: List[str] = [],
+        sus_rbac: bool = False,
+        trivy_bin: str = "",
+        trivy_file: str = "",
+        verbosity: int = 1,
+        version: Optional[str] = None,
+        version_diff: int = 0,
+        vuln_image: bool = False,
+        wget_bin: str = "",
+    ) -> None:
         """Initialize attributes"""
 
         if requisites is None:
@@ -134,7 +134,7 @@ class Kubenumerate:
         self.privesc_set = privesc
         self.privileged_flag = privileged
         self.sus_rbac = sus_rbac
-        self.requisites = requisites
+        self.requisites: List[str] = [] if requisites is None else requisites
         self.trivy_bin = trivy_bin
         self.trivy_file = trivy_file
         self.pkl_recovery = pkl_recovery
@@ -146,12 +146,12 @@ class Kubenumerate:
         self.vuln_image = vuln_image
         self.wget_bin = wget_bin
 
-    def parse_args(self):
+    def parse_args(self) -> None:
         """Parse args and return them"""
 
         # TODO: make no colour flag for those using a light mode terminal. Then in colour methods simply use black
         parser = argparse.ArgumentParser(
-            description="Uses local kubeconfig file to launch kube-bench, kubectl, trivy and KubiScan "
+            description="Uses local kubeconfig file to launch kubectl, trivy and KubiScan "
             "and parses all useful output to excel."
         )
         parser.add_argument(
@@ -195,16 +195,16 @@ class Kubenumerate:
         )
         self.args = parser.parse_args()
 
-    def check_os(self):
+    def check_os(self) -> None:
         """Detect if script is being run in macOS, Linux or other, and its architecture"""
 
         class ArchitectureNotSupported(Exception):
-            def __init__(self, message, supported_architectures=None):
+            def __init__(self, message: str, supported_architectures: Optional[List[str]] = None) -> None:
                 self.message = message
                 self.supported_architectures = supported_architectures or ["Linux amd64", "macOS amd64", "macOS arm64"]
                 super().__init__(self.message)
 
-            def get_currently_supported_architectures(self):
+            def get_currently_supported_architectures(self) -> str:
                 return "".join(f"\n\t- {supported_arch}" for supported_arch in self.supported_architectures)
 
         try:
@@ -242,7 +242,7 @@ class Kubenumerate:
             )
             exit(80)
 
-    def brew_pathfinder(self):
+    def brew_pathfinder(self) -> None:
         """Find brew bin directory"""
 
         paths = [
@@ -252,43 +252,42 @@ class Kubenumerate:
             "/opt/homebrew/bin",
         ]
 
-        self.brew_path = next((path for path in paths if os.path.exists(path)), None)
+        next_path = next((path for path in paths if os.path.exists(path)), None)
+        if next_path:
+            self.brew_path = next_path
         self.brew_bin = f"{self.brew_path}/brew" if os.path.exists(f"{self.brew_path}/brew") else None
+        return
 
-    def check_requisites(self):
-        """Check for kubeaudit, kube-bench, trivy, etc. Shout if they're not present in the system"""
+    def check_requisites(self) -> None:
+        """Check for necessary tools. Shout if they're not present in the system"""
 
         self.check_os()
         self.brew_pathfinder()
 
-        # Kubeaudit
-        self.kubeaudit_bin = (
-            f"{self.brew_path}/kubeaudit"
-            if os.path.exists(f"{self.brew_path}/kubeaudit")
-            else shutil.which("kubeaudit")
-        )
-        if self.kubeaudit_bin is None:
-            self.requisites.append("kubeaudit")
-
         # Kube-bench
-        self.kube_bench_bin = (
-            "/tmp/kube-bench/kube-bench" if os.path.exists("/tmp/kube-bench/kube-bench") else shutil.which("kube-bench")
-        )
-        if self.kube_bench_bin is None:
-            self.requisites.append("kube-bench")
+        # self.kube_bench_bin = (
+        #     "/tmp/kube-bench/kube-bench" if os.path.exists("/tmp/kube-bench/kube-bench") else shutil.which("kube-bench")
+        # )
+        # if self.kube_bench_bin is None:
+        #     self.requisites.append("kube-bench")
 
         # Kubectl
-        self.kubectl_bin = (
-            f"{self.brew_path}/kubectl" if os.path.exists(f"{self.brew_path}/kubectl") else shutil.which("kubectl")
-        )
-        if self.kubectl_bin is None:
-            self.requisites.append("kubectl")
+        kubectl_path = f"{self.brew_path}/kubectl" if self.brew_path else None
+        if os.path.exists(str(kubectl_path)):
+            self.kubectl_bin = str(kubectl_path)
+        elif shutil.which("kubectl"):
+            self.kubectl_bin = str(shutil.which("kubectl"))
+        else:
+            self.kubectl_bin = "kubectl"
 
         # Trivy
-        self.trivy_bin = (
+        trivy_pathfinder: Optional[str] = (
             f"{self.brew_path}/trivy" if os.path.exists(f"{self.brew_path}/trivy") else shutil.which("trivy")
         )
-        if self.trivy_bin is None:
+
+        if trivy_pathfinder is not None:
+            self.trivy_bin = trivy_pathfinder
+        else:
             self.requisites.append("trivy")
 
         # Kubiscan
@@ -297,40 +296,39 @@ class Kubenumerate:
                 self.requisites.append("kubiscan")
 
         # Wget
-        self.wget_bin = f"{self.brew_path}/wget" if os.path.exists(f"{self.brew_path}/wget") else shutil.which("wget")
-        if self.wget_bin is None:
+        wget_bin_pathfinder = (
+            f"{self.brew_path}/wget" if os.path.exists(f"{self.brew_path}/wget") else shutil.which("wget")
+        )
+        if wget_bin_pathfinder is None:
             self.requisites.append("wget")
+        else:
+            self.wget_bin = wget_bin_pathfinder
 
         # Jq
-        self.jq_bin = f"{self.brew_path}/jq" if os.path.exists(f"{self.brew_path}/jq") else shutil.which("jq")
-        if self.jq_bin is None:
+        jq_bin_pathfinder = f"{self.brew_path}/jq" if os.path.exists(f"{self.brew_path}/jq") else shutil.which("jq")
+        if jq_bin_pathfinder is None:
             self.requisites.append("jq")
+        else:
+            self.jq_bin = jq_bin_pathfinder
 
         if len(self.requisites) > 0:
             self.install_requisites()
         else:
             print(f'{self.green_text("[+]")} All necessary software successfully detected in the system.')
 
-    def install_requisites(self):
-        """Check for kubeaudit, kube-bench and trivy. Offer installing them if they are not present in the system"""
+    def install_requisites(self) -> None:
+        """Check for tools. Offer installing it if they are not present in the system"""
         self.ask_for_permission()
 
-        # Install kubeaudit
-        if self.inst_kubeaudit:
-            if not self.install:
-                print(f'{self.red_text("[-]")} Please install kubeaudit: https://github.com/Shopify/kubeaudit')
-            else:
-                self.install_tool("kubeaudit")
-
-        # Install kube-bench
-        if self.inst_kubebench:
-            if not self.install:
-                print(f'{self.red_text("[-]")} Please install kube-bench: https://github.com/aquasecurity/kube-bench')
-            else:
-                if not os.path.exists("/tmp/kube-bench/kube-bench"):
-                    self.install_tool("kube-bench")
-                else:
-                    self.kube_bench_bin = "/tmp/kube-bench/kube-bench"
+        # # Install kube-bench
+        # if self.inst_kubebench:
+        #     if not self.install:
+        #         print(f'{self.red_text("[-]")} Please install kube-bench: https://github.com/aquasecurity/kube-bench')
+        #     else:
+        #         if not os.path.exists("/tmp/kube-bench/kube-bench"):
+        #             self.install_tool("kube-bench")
+        #         else:
+        #             self.kube_bench_bin = "/tmp/kube-bench/kube-bench"
 
         # Install kubectl
         if self.inst_kubectl:
@@ -384,14 +382,13 @@ class Kubenumerate:
                 f"to make sure all tools are in your path."
             )
 
-    def ask_for_permission(self):
+    def ask_for_permission(self) -> None:
         """Ask the user for permission to install needed software in the system"""
 
         # Dictionary to map tools to their attributes
         tool_attribute_mapping = {
             "jq": "inst_jq",
-            "kubeaudit": "inst_kubeaudit",
-            "kube-bench": "inst_kubebench",
+            # "kube-bench": "inst_kubebench",
             "kubectl": "inst_kubectl",
             "trivy": "inst_trivy",
             "kubiscan": "inst_kubiscan",
@@ -403,7 +400,8 @@ class Kubenumerate:
         for tool in self.requisites:
             if tool in tool_attribute_mapping:
                 setattr(self, tool_attribute_mapping[tool], True)  # Elegant hack
-                if tool != "kube-bench" and tool != "kubiscan" and not print_brew_message:
+                # if tool != "kube-bench" and tool != "kubiscan" and not print_brew_message:
+                if tool != "kubiscan" and not print_brew_message:
                     print_brew_message = True
 
             print(f'\t- {self.yellow_text(f"{tool}")}')
@@ -418,7 +416,7 @@ class Kubenumerate:
         while True:
             answer = (
                 input(
-                    f'{self.yellow_text("[!]")} Do you give your {self.green_text("consent")} to install all the above?\n'
+                    f'{self.yellow_text("[!]")} Do you give your {self.green_text("consent")} to install all of the above?\n'
                     f'\tIf {self.green_text("yes")}, {self.cyan_text("Kubenumerate")} will '
                     f'{self.yellow_text("install all of them")} and {self.yellow_text("restart automatically")}.\n'
                     f'\tIf {self.red_text("no")}, {self.cyan_text("Kubenumerate")} will prompt you where are the official '
@@ -455,16 +453,19 @@ class Kubenumerate:
         else:
             self.brew_bin = shutil.which("brew")
 
-    def install_tool(self, tool):
+    def install_tool(self, tool: str) -> None:
         """Install the passed tool using brew, or install brew using bash"""
 
         print(f'\n{self.cyan_text("[*]")} Installing {tool}...')
-        shell = ""
+        shell: str = ""
         try:
             shell = os.environ["SHELL"]
         except KeyError:
             try:
-                shell = shutil.which("bash")
+                shell_result = shutil.which("bash")
+                if shell_result:
+                    shell = shell_result
+
             except Exception as e:
                 print(
                     f'{self.red_text("[-]")} Error: Could not determine the shell. Please set the SHELL environment '
@@ -499,31 +500,31 @@ class Kubenumerate:
                 sys.exit(1)
             return
 
-        if tool == "kube-bench":
-            downloaded_tarball = self.fetch_and_download_latest_version_from_github("kube-bench")
-            kube_bench_path = "/tmp/kube-bench/"
-            # Untar kube-bench
-            try:
-                with tarfile.open(downloaded_tarball, "r:gz") as tarball:
-                    tarball.extractall(path=kube_bench_path)
-                    # Find the kube-bench binary
-                    self.kube_bench_bin = next(
-                        os.path.join(root, file)
-                        for root, dirs, files in os.walk(kube_bench_path)
-                        for file in files
-                        if file == "kube-bench"
-                    )
-                    # Make it executable
-                    os.chmod(self.kube_bench_bin, 0o755)
-                if self.verbosity > 1:
-                    print("DEBUG DEV: kube-bench installed successfully")
-            except Exception as e:
-                print(f"{self.red_text('[-]')} It was not possible to download kube-bench: {e}")
-            return
-            # curl | jq | wget command for debugging purposes:
-            #   curl -s https://api.github.com/repos/aquasecurity/kube-bench/releases/latest | \
-            #   jq -r '.assets[] | select(.name | test(\"linux_amd64.tar.gz\")) | .browser_download_url' | \
-            #   wget -i - -P /tmp/kube-bench/"
+        # if tool == "kube-bench":
+        #     downloaded_tarball = self.fetch_and_download_latest_version_from_github("kube-bench")
+        #     kube_bench_path = "/tmp/kube-bench/"
+        #     # Untar kube-bench
+        #     try:
+        #         with tarfile.open(downloaded_tarball, "r:gz") as tarball:
+        #             tarball.extractall(path=kube_bench_path)
+        #             # Find the kube-bench binary
+        #             self.kube_bench_bin = next(
+        #                 os.path.join(root, file)
+        #                 for root, dirs, files in os.walk(kube_bench_path)
+        #                 for file in files
+        #                 if file == "kube-bench"
+        #             )
+        #             # Make it executable
+        #             os.chmod(self.kube_bench_bin, 0o755)
+        #         if self.verbosity > 1:
+        #             print("DEBUG DEV: kube-bench installed successfully")
+        #     except Exception as e:
+        #         print(f"{self.red_text('[-]')} It was not possible to download kube-bench: {e}")
+        #     return
+        #     # curl | jq | wget command for debugging purposes:
+        #     #   curl -s https://api.github.com/repos/aquasecurity/kube-bench/releases/latest | \
+        #     #   jq -r '.assets[] | select(.name | test(\"linux_amd64.tar.gz\")) | .browser_download_url' | \
+        #     #   wget -i - -P /tmp/kube-bench/"
 
         if tool == "kubiscan":
             try:
@@ -531,7 +532,7 @@ class Kubenumerate:
                 if self.verbosity > 1:
                     print("DEBUG DEV: kubiscan downloaded successfully")
 
-                kubiscan_path = "/tmp/kubiscan/"
+                kubiscan_path: str = "/tmp/kubiscan/"
                 # Extract the tool
                 try:
                     with zipfile.ZipFile(downloaded_zipball, "r") as zip_ref:
@@ -559,7 +560,7 @@ class Kubenumerate:
             print(f'{self.red_text("[-]")} Error whilst installing {tool}: {e}')
             sys.exit(1)
 
-    def find_kubiscan_bin(self):
+    def find_kubiscan_bin(self) -> bool:
         """Logic needed to cope with dynamically named directory for kubiscan"""
         for root, dirs, files in os.walk(self.kubiscan_path):
             if "KubiScan.py" in files:
@@ -568,33 +569,34 @@ class Kubenumerate:
                 return True
         return False
 
-    def fetch_and_download_latest_version_from_github(self, tool):
+    def fetch_and_download_latest_version_from_github(self, tool: str) -> str:
         """Fetch latest version of the tool from GitHub, download and extract it. Needs for the repo to be specified"""
 
-        def get_download_url(target, latest):
+        def get_download_url(target: str, latest: Dict[str, Any]) -> Any:
             """Needing to do different download types for different tools as assets are not the same"""
-            if target == "kube-bench":
-                if self.host_os == "Linux":
-                    return next(
-                        asset["browser_download_url"]
-                        for asset in latest["assets"]
-                        if "linux_amd64.tar.gz" in asset["name"]
-                    )
-                if self.host_arch == "darwin_amd64":
-                    return next(
-                        asset["browser_download_url"]
-                        for asset in latest["assets"]
-                        if "darwin_amd64.tar.gz" in asset["name"]
-                    )
-                if self.host_arch == "darwin_arm64":
-                    return next(
-                        asset["browser_download_url"]
-                        for asset in latest["assets"]
-                        if "darwin_arm64.tar.gz" in asset["name"]
-                    )
+            # if target == "kube-bench":
+            #     if self.host_os == "Linux":
+            #         return next(
+            #             asset["browser_download_url"]
+            #             for asset in latest["assets"]
+            #             if "linux_amd64.tar.gz" in asset["name"]
+            #         )
+            #     if self.host_arch == "darwin_amd64":
+            #         return next(
+            #             asset["browser_download_url"]
+            #             for asset in latest["assets"]
+            #             if "darwin_amd64.tar.gz" in asset["name"]
+            #         )
+            #     if self.host_arch == "darwin_arm64":
+            #         return next(
+            #             asset["browser_download_url"]
+            #             for asset in latest["assets"]
+            #             if "darwin_arm64.tar.gz" in asset["name"]
+            #         )
             if target == "kubiscan":
                 # Python package, simply get the zipball
                 return latest["zipball_url"]
+            return ""
 
         try:
             tool_tmp_dir, repo, tool_full_path = f"/tmp/{tool}/", "", ""
@@ -605,9 +607,9 @@ class Kubenumerate:
             except Exception as e:
                 print(f'{self.red_text("[-]")} Error while creating tmp dir: {e}')
 
-            if tool == "kube-bench":
-                repo = "aquasecurity/kube-bench"
-                tool_full_path = f"{tool_tmp_dir}{tool}.tar.gz"
+            # if tool == "kube-bench":
+            #     repo = "aquasecurity/kube-bench"
+            #     tool_full_path = f"{tool_tmp_dir}{tool}.tar.gz"
 
             if tool == "kubiscan":
                 repo = "cyberark/KubiScan"
@@ -628,19 +630,20 @@ class Kubenumerate:
             return f"{tool_full_path}"
         except Exception as e:
             print(f'{self.red_text("[-]")} Error while fetching {tool}: {e}')
+            return ""
 
-    def global_checks(self):
+    def global_checks(self) -> None:
         """Perform other necessary checks to ensure a correct execution"""
 
         # Use args if passed
-        if self.args.output is not None:
+        if hasattr(self.args, "output") and self.args.output:
             self.out_path = f"{os.path.abspath(self.args.output)}/"
             self.kubectl_path = f"{os.path.abspath(self.args.output)}/kubectl_output/"
 
-        if self.args.namespace is not None and not "-A":
+        if hasattr(self.args, "namespace") and self.args.namespace != "-A":
             self.namespace = f"-n {self.args.namespace}"
 
-        if self.args.dry_run:
+        if hasattr(self.args, "dry_run") and self.args.dry_run:
             self.dry_run = True
 
         # Set correct verbosity
@@ -665,7 +668,7 @@ class Kubenumerate:
                 with open(self.trivy_file, "r") as f:
                     self.pods = json.loads(f.read())
         else:
-            self.pods_file = f"{self.kubectl_path}pods.json"
+            self.pods_file = str(os.path.join(self.kubectl_path, "pods.json"))
 
         # Check path exists and create it if not
         try:
@@ -706,7 +709,7 @@ class Kubenumerate:
                     self.kubeconfig_path = common_kubeconfig_location
 
             try:
-                with open(self.kubeconfig_path, "r") as kubeconfig_file:
+                with open(str(self.kubeconfig_path), "r") as kubeconfig_file:
                     kubeconfig = yaml.safe_load(kubeconfig_file)
 
                 current_context = kubeconfig.get("current-context")
@@ -731,7 +734,7 @@ class Kubenumerate:
         # Construct excel filename
         self.parse_excel_filename()
 
-    def parse_excel_filename(self):
+    def parse_excel_filename(self) -> None:
         """Construct the Excel filename according to the switches passed to the script"""
 
         # Default
@@ -742,28 +745,28 @@ class Kubenumerate:
         # If set, use parsed filename
         self.excel_file = f"{self.out_path}{self.args.excel_out}"
 
-    def launch_kube_bench(self):
-        """Check whether a previous kube-bench json file already exists. If not, launch kube-bench"""
+    # def launch_kube_bench(self):
+    #     """Check whether a previous kube-bench json file already exists. If not, launch kube-bench"""
 
-        # Double-check if a file already exists
-        self.kube_bench_file = f"{self.out_path}kube_bench_output.json"
-        if os.path.exists(self.kube_bench_file):
-            if self.verbosity > 0:
-                print(
-                    f'{self.green_text("[+]")} Using existing "{self.cyan_text(self.kube_bench_file)}" kube-bench '
-                    f"file as input file to avoid sending unnecessary requests to the client's cluster."
-                )
-                print(
-                    f'{self.yellow_text("[!]")} If you want a fresh {self.cyan_text("kube-bench")} output file, run '
-                    f"the following command and then run this program again:\n\t"
-                    f'{self.yellow_text(f"rm {self.kube_bench_file}")}'
-                )
-            return
+    #     # Double-check if a file already exists
+    #     self.kube_bench_file = f"{self.out_path}kube_bench_output.json"
+    #     if os.path.exists(self.kube_bench_file):
+    #         if self.verbosity > 0:
+    #             print(
+    #                 f'{self.green_text("[+]")} Using existing "{self.cyan_text(self.kube_bench_file)}" kube-bench '
+    #                 f"file as input file to avoid sending unnecessary requests to the client's cluster."
+    #             )
+    #             print(
+    #                 f'{self.yellow_text("[!]")} If you want a fresh {self.cyan_text("kube-bench")} output file, run '
+    #                 f"the following command and then run this program again:\n\t"
+    #                 f'{self.yellow_text(f"rm {self.kube_bench_file}")}'
+    #             )
+    #         return
 
-        # Run kube-bench
-        self.get_kubebench_output()
+    #     # Run kube-bench
+    #     self.get_kubebench_output()
 
-    def launch_kubectl(self):
+    def launch_kubectl(self) -> None:
         """Get everything from kubectl"""
 
         # Gather all other possible kubectl output in case access to the cluster is lost
@@ -772,7 +775,7 @@ class Kubenumerate:
         if self.verbosity > 0:
             print(f'{self.green_text("[+]")} Done. All kubectl output saved to {self.cyan_text(self.out_path)}')
 
-    def parse_all_pods(self):
+    def parse_all_pods(self) -> None:
         """Check whether a previous kubectl json file already exists. If not, launch kubectl"""
 
         # Abort if user passed file as arg
@@ -793,7 +796,7 @@ class Kubenumerate:
             with open(self.pods_file, "r") as f:
                 self.pods = json.loads(f.read())
 
-    def kubectl_get_all_yaml_and_json(self):
+    def kubectl_get_all_yaml_and_json(self) -> None:
         """Gather all output from kubectl in both json and yaml"""
 
         # Check if kubeconfig was passed and adjust commands to include the flag
@@ -808,7 +811,7 @@ class Kubenumerate:
             )
             cluster_version_stdout, cluster_version_stderr = cluster_version_process.communicate()
 
-            self.cluster_version = self.extract_version(cluster_version_stdout)
+            self.cluster_version = str(self.extract_version(cluster_version_stdout))
             with open(f"{self.kubectl_path}cluster_version.txt", "w") as f:
                 f.write(self.cluster_version)
 
@@ -821,8 +824,8 @@ class Kubenumerate:
         kubectl_yaml_file = f"{self.kubectl_path}all_output.yaml"
 
         if not os.path.exists(kubectl_json_file):
-            Path.touch(kubectl_json_file, 0o644)
-            Path.touch(kubectl_yaml_file, 0o644)
+            Path.touch(Path(kubectl_json_file), 0o644)
+            Path.touch(Path(kubectl_yaml_file), 0o644)
 
         if self.verbosity > 0:
             print(
@@ -858,11 +861,11 @@ class Kubenumerate:
                         )
                     continue
                 try:
-                    Path.touch(f"{self.kubectl_path}{resource}.json", 0o644)
-                    Path.touch(f"{self.kubectl_path}{resource}.yaml", 0o644)
+                    Path.touch(Path(f"{self.kubectl_path}{resource}.json"), 0o644)
+                    Path.touch(Path(f"{self.kubectl_path}{resource}.yaml"), 0o644)
 
-                    command = f"{self.kubectl_bin} get {resource} {self.namespace} -o json".split(" ")
-                    process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                    command = f"{self.kubectl_bin} get {resource} {self.namespace} -o json"
+                    process = subprocess.Popen(command.split(" "), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                     stdout, stderr = process.communicate()
                 except Exception as e:
                     # If forbidden, don't try to do it with yaml
@@ -883,7 +886,7 @@ class Kubenumerate:
                     skipped += 1
                     continue
 
-                Path.touch(f"{self.kubectl_path}{resource}.json", 0o644)
+                Path.touch(Path(f"{self.kubectl_path}{resource}.json"), 0o644)
                 with open(f"{self.kubectl_path}{resource}.json", "w") as f:
                     # Check to avoid creating empty list file
                     contents_str = json.dumps(contents, indent=4)
@@ -899,7 +902,7 @@ class Kubenumerate:
                 stdout, stderr = process.communicate()
 
                 # Save the output to its own yaml file
-                Path.touch(f"{self.kubectl_path}{resource}.yaml", 0o644)
+                Path.touch(Path(f"{self.kubectl_path}{resource}.yaml"), 0o644)
                 with open(f"{self.kubectl_path}{resource}.yaml", "w") as f:
                     f.write(stdout.decode("utf-8"))
 
@@ -913,38 +916,39 @@ class Kubenumerate:
         print("\n", flush=True, file=sys.stdout)
         print(
             f'{self.green_text("[+]")} Successfully extracted '
-            f"{self.green_text(total_resources - skipped)}/{self.yellow_text(total_resources)} resources (the other "
-            f"{self.yellow_text(skipped)} came up empty so were not collected)."
+            f"{self.green_text(str(total_resources - skipped))}/{self.yellow_text(str(total_resources))} resources (the other "
+            f"{self.yellow_text(str(skipped))} came up empty so were not collected)."
         )
 
-    def launch_gatherer_tools(self):
-        """Launch kube-bench and trivy (kubeaudit removed)"""
+    def launch_gatherer_tools(self) -> None:
+        """Launch trivy (kubeaudit and kube-bench removed)"""
 
         # Kill switch for the flag --dry-run
         if self.dry_run:
             print(f'{self.cyan_text("[*]")} --dry-run flag detected. Skipping launching gatherer tools.')
 
             # Creating empty kube-bench file for the script to work
-            self.kube_bench_file = "/tmp/kube-bench_dummy_file.json"
-            dummy_data = {}
+            # self.kube_bench_file = "/tmp/kube-bench_dummy_file.json"
+            # dummy_data = {}
 
-            with open(self.kube_bench_file, "w") as dummy_f:
-                json.dump(dummy_data, dummy_f)
+            # with open(self.kube_bench_file, "w") as dummy_f:
+            #     json.dump(dummy_data, dummy_f)
             return
 
         self.launch_kubectl()
-        self.launch_kube_bench()
+        # self.launch_kube_bench()
 
-    def clean_up(self):
+    def clean_up(self) -> None:
         """Clean up empty files, if generated"""
 
         if self.dry_run:
-            os.remove(self.kube_bench_file)
-            if self.args.verbosity > 1:
-                print(f"File '{self.kube_bench_file}' deleted successfully.")
+            if os.path.exists(self.kube_bench_file):
+                os.remove(self.kube_bench_file)
+                if self.args.verbosity > 1:
+                    print(f"File '{self.kube_bench_file}' deleted successfully.")
 
-    def run(self):
-        """Class main method. Launch kube-bench and trivy and parse them (kubeaudit removed)"""
+    def run(self) -> None:
+        """Class main method. Launch trivy and parse it (kubeaudit and kube-bench removed)"""
 
         # Abort immediately if python 3.11 is not being used
         self.py_bin = "python3" if self.py_bin is None else self.py_bin  # Triple check python is valid
@@ -997,48 +1001,46 @@ class Kubenumerate:
 
         # Run tools
         if self.verbosity > 0:
-            print(f'\n{self.cyan_text("[*]")} ----- Running kubectl and kube-bench -----')
+            print(f'\n{self.cyan_text("[*]")} ----- Running kubectl -----')
         self.launch_gatherer_tools()
 
         # Write to Excel file all findings
         if self.verbosity > 0:
-            print(f'\n{self.cyan_text("[*]")} ----- Parsing kube-bench and trivy output, please wait... -----')
+            print(f'\n{self.cyan_text("[*]")} ----- Parsing trivy output, please wait... -----')
         # Check versions difference
         self.kubernetes_version_check()
         # Generate local kubeaudit-equivalent findings from kubectl output
         kubeaudit_df = self.generate_kubeaudit_equivalent_df_from_kubectl()
-        with open(self.kube_bench_file, "r") as kube_bench_f:
-            with pd.ExcelWriter(self.excel_file, engine="xlsxwriter", mode="w") as writer:
-                # Run all Kubeaudit-equivalent methods
-                self.apparmor(kubeaudit_df, writer)
-                self.asat(kubeaudit_df, writer)
-                self.caps(kubeaudit_df, writer)
-                self.dep_api(kubeaudit_df, writer)
-                self.host_ns(kubeaudit_df, writer)
-                self.limits(kubeaudit_df, writer)
-                self.mounts(kubeaudit_df, writer)
-                self.net_pols(kubeaudit_df, writer)
-                self.non_root(kubeaudit_df, writer)
-                self.privesc(kubeaudit_df, writer)
-                self.root_fs(kubeaudit_df, writer)
-                self.seccomp(kubeaudit_df, writer)
-                if self.verbosity > 0:
-                    print(
-                        f'{self.green_text("[+]")} {self.cyan_text("Kubeaudit-equivalent checks")} successfully parsed.'
-                    )
-                # Run Kube-bench methods
-                if not self.dry_run:
-                    kube_bench_dict = json.load(kube_bench_f)
-                    kube_bench_df = pd.json_normalize(kube_bench_dict, record_path=["Controls", "tests", "results"])
-                    self.cis(kube_bench_df, writer)
-                    if self.verbosity > 0:
-                        print(f'{self.green_text("[+]")} {self.cyan_text("Kube-bench")} successfully parsed.')
-                # Parse all pods for Trivy
-                self.parse_all_pods()
-                # Run Trivy methods
-                self.trivy_parser(writer)
-                if self.verbosity > 0:
-                    print(f'{self.green_text("[+]")} {self.cyan_text("Trivy")} successfully parsed.')
+        # with open(self.kube_bench_file, "r") as kube_bench_f:
+        with pd.ExcelWriter(self.excel_file, engine="xlsxwriter", mode="w") as writer:
+            # Run all Kubeaudit-equivalent methods
+            self.apparmor(kubeaudit_df, writer)
+            self.asat(kubeaudit_df, writer)
+            self.caps(kubeaudit_df, writer)
+            self.dep_api(kubeaudit_df, writer)
+            self.host_ns(kubeaudit_df, writer)
+            self.limits(kubeaudit_df, writer)
+            self.mounts(kubeaudit_df, writer)
+            self.net_pols(kubeaudit_df, writer)
+            self.non_root(kubeaudit_df, writer)
+            self.privesc(kubeaudit_df, writer)
+            self.root_fs(kubeaudit_df, writer)
+            self.seccomp(kubeaudit_df, writer)
+            if self.verbosity > 0:
+                print(f'{self.green_text("[+]")} {self.cyan_text("Kubeaudit-equivalent checks")} successfully parsed.')
+            # Run Kube-bench methods
+            # if not self.dry_run:
+            # kube_bench_dict = json.load(kube_bench_f)
+            # kube_bench_df = pd.json_normalize(kube_bench_dict, record_path=["Controls", "tests", "results"])
+            # self.cis(kube_bench_df, writer)
+            # if self.verbosity > 0:
+            #     print(f'{self.green_text("[+]")} {self.cyan_text("Kube-bench")} successfully parsed.')
+            # Parse all pods for Trivy
+            self.parse_all_pods()
+            # Run Trivy methods
+            self.trivy_parser(writer)
+            if self.verbosity > 0:
+                print(f'{self.green_text("[+]")} {self.cyan_text("Trivy")} successfully parsed.')
         if self.verbosity >= 0:
             print(f'{self.green_text("[+]")} Done! All output successfully saved to {self.cyan_text(self.excel_file)}.')
 
@@ -1051,7 +1053,7 @@ class Kubenumerate:
         # Finish by raising issues to the terminal
         self.raise_issues()
 
-    def check_roles(self):
+    def check_roles(self) -> None:
         if self.dry_run:
             print(
                 f'{self.cyan_text("[*]")} --dry-run flag detected. Using current directory to fetch json files'
@@ -1061,7 +1063,7 @@ class Kubenumerate:
             return
         self.run_kubiscan()
 
-    def run_extensive_role_check(self):
+    def run_extensive_role_check(self) -> None:
         """Run ExtensiveRoleCheck if not connected to the cluster"""
 
         role_check_out_path = f"{self.out_path}ExtensiveRoleCheck_output.txt"
@@ -1090,7 +1092,7 @@ class Kubenumerate:
                 )
 
             # Save the output to its own file
-            Path.touch(role_check_out_path, 0o644)
+            Path.touch(Path(role_check_out_path), 0o644)
             with open(f"{role_check_out_path}", "w") as f:
                 f.write(stderr.decode("utf-8"))
                 f.write(stdout.decode("utf-8"))
@@ -1101,7 +1103,7 @@ class Kubenumerate:
         except Exception as e:
             print(f'{self.red_text("[-]")} Error detected while launching `python3 ExtensiveRoleCheck.py`: {e}')
 
-    def run_kubiscan(self):
+    def run_kubiscan(self) -> None:
         """Run KubiScan if connected to the cluster"""
         if self.args.kubeconfig is not None:
             self.kubiscan_py = f"{self.kubiscan_py} -co {self.args.kubeconfig}"
@@ -1123,7 +1125,7 @@ class Kubenumerate:
         except Exception as e:
             print(f'{self.red_text("[-]")} Error while running {self.cyan_text("Kubiscan")}: {e}')
 
-    def kubernetes_version_check(self):
+    def kubernetes_version_check(self) -> None:
         """Check whether the cluster's version is outdated"""
         print(
             f"{self.cyan_text('[*]')} Determining latest version of {self.cyan_text('K8s')} from "
@@ -1154,23 +1156,25 @@ class Kubenumerate:
         if Version(self.cluster_version) < Version(self.kube_version):
             self.version_diff = int(self.kube_version.split(".")[1]) - int(self.cluster_version.split(".")[1])
 
-    def fetch_latest_kubernetes_version(self):
+    def fetch_latest_kubernetes_version(self) -> str:
         """Get latest kubernetes version by querying GitHub's API"""
         # Command for dev purposes:
         # curl -s https://api.github.com/repos/kubernetes/kubernetes/releases/latest | jq -r .tag_name | sed 's/v//'
         try:
             response = requests.get("https://api.github.com/repos/kubernetes/kubernetes/releases/latest")
             data = response.json()
-            tag_name = data["tag_name"].lstrip("v")
+            tag_name_try = data["tag_name"].lstrip("v")
+            if isinstance(tag_name_try, str):
+                tag_name = tag_name_try
         except Exception as e:
             print(f'{self.red_text("[-]")} Error while running curl trying to fetch kubernetes last version: {e}')
-            return None
+            return "error"
 
         return tag_name
 
     @staticmethod
-    def extract_version(version_output):
-        """Get cluster's version with RegEx even in case it's a weird string like 1.28.11-eks-ae83b80"""
+    def extract_version(version_output: bytes) -> Optional[str]:
+        """Get cluster's version with RegEx even in case it's a weird string"""
 
         server_version = ""
         for line in version_output.decode("UTF-8").splitlines():
@@ -1182,146 +1186,146 @@ class Kubenumerate:
         if match:
             return match.group(1)
 
-        print(f"Error: version not found in string {version_output}")
+        print(f"Error: version not found in string {version_output.decode()}")
         return None
 
     # Colour the terminal!
     @staticmethod
-    def red_text(text):
+    def red_text(text: str) -> str:
         return f"\033[91m{text}\033[0m"
 
     @staticmethod
-    def cyan_text(text):
+    def cyan_text(text: str) -> str:
         return f"\033[96m{text}\033[0m"
 
     @staticmethod
-    def green_text(text):
+    def green_text(text: str) -> str:
         return f"\033[92m{text}\033[0m"
 
     @staticmethod
-    def yellow_text(text):
+    def yellow_text(text: str) -> str:
         return f"\033[93m{text}\033[0m"
 
-    def get_kubebench_output(self):
-        """Run 'kube-bench run --targets=node,policies' command and return pointer to output file location"""
-        if self.verbosity > 0:
-            print(f'{self.cyan_text("[*]")} Running kube-bench, please wait...')
+    # def get_kubebench_output(self):
+    #     """Run 'kube-bench run --targets=node,policies' command and return pointer to output file location"""
+    #     if self.verbosity > 0:
+    #         print(f'{self.cyan_text("[*]")} Running kube-bench, please wait...')
 
-        # TODO: I don't entirely like this logic. It should be:
-        #   if I know where the kube-bench release folder with the config and the binary is, use that.
-        #   if not known, and not in /tmp (and thus not installed by kubenumeraga):
-        #       try to find it
-        #       if not found:
-        #           user input -> please tell me where to look for the kube-bench binary
-        #   ... or use a different tool that isn't kube-bench because not realistically will this be called in a node
-        kube_bench_config_flag = ""
-        if self.kube_bench_bin == "/tmp/kube-bench/kube-bench":
-            kube_bench_config_flag = "--config-dir /tmp/kube-bench/cfg/"
+    #     # TODO: I don't entirely like this logic. It should be:
+    #     #   if I know where the kube-bench release folder with the config and the binary is, use that.
+    #     #   if not known, and not in /tmp (and thus not installed by kubenumeraga):
+    #     #       try to find it
+    #     #       if not found:
+    #     #           user input -> please tell me where to look for the kube-bench binary
+    #     #   ... or use a different tool that isn't kube-bench because not realistically will this be called in a node
+    #     kube_bench_config_flag = ""
+    #     if self.kube_bench_bin == "/tmp/kube-bench/kube-bench":
+    #         kube_bench_config_flag = "--config-dir /tmp/kube-bench/cfg/"
 
-        command = f"{self.kube_bench_bin} {kube_bench_config_flag} run --targets=node,policies --json".split(" ")
-        sudo = False
-        while True:
-            try:
-                if sudo:
-                    command.insert(0, "sudo")
-                process = subprocess.run(command, check=True, capture_output=True, text=True)
+    #     command = f"{self.kube_bench_bin} {kube_bench_config_flag} run --targets=node,policies --json".split(" ")
+    #     sudo = False
+    #     while True:
+    #         try:
+    #             if sudo:
+    #                 command.insert(0, "sudo")
+    #             process = subprocess.run(command, check=True, capture_output=True, text=True)
 
-                with open(self.kube_bench_file, "w") as output_kube_bench_file:
-                    output_kube_bench_file.write(process.stdout)
+    #             with open(self.kube_bench_file, "w") as output_kube_bench_file:
+    #                 output_kube_bench_file.write(process.stdout)
 
-                if self.verbosity > 0:
-                    print(
-                        f'{self.green_text("[+]")} Done. Kube-bench output saved to '
-                        f"{self.cyan_text(self.kube_bench_file)}"
-                    )
-                    return
+    #             if self.verbosity > 0:
+    #                 print(
+    #                     f'{self.green_text("[+]")} Done. Kube-bench output saved to '
+    #                     f"{self.cyan_text(self.kube_bench_file)}"
+    #                 )
+    #                 return
 
-            except subprocess.CalledProcessError:
-                if not sudo:
-                    print(f'{self.red_text("[-]")} Process exited prematurely. Retrying with sudo...')
-                    sudo = True
-                    continue
-                print(f'{self.red_text("[-]")} Error running kube-bench.')
+    #         except subprocess.CalledProcessError:
+    #             if not sudo:
+    #                 print(f'{self.red_text("[-]")} Process exited prematurely. Retrying with sudo...')
+    #                 sudo = True
+    #                 continue
+    #             print(f'{self.red_text("[-]")} Error running kube-bench.')
 
-    def cis(self, df, writer):
-        """Parse the kube-bench JSON file to generate a sheet containing the CIS benchmarks that failed and warned"""
-        try:
-            # Fail
-            df_failed_cis = df[df["status"] == "FAIL"]
-            df_failed_cis = df_failed_cis[
-                ["status", "test_number", "test_desc", "audit", "AuditConfig", "reason", "remediation"]
-            ]
-            df_failed_cis = df_failed_cis.rename(
-                columns={
-                    "status": "Status",
-                    "test_number": "Test Number",
-                    "test_desc": "Test Description",
-                    "audit": "Audit",
-                    "AuditConfig": "Audit Config",
-                    "reason": "Reason",
-                    "remediation": "Remediation",
-                }
-            )
-            self.colour_cells_and_save_to_excel(
-                "CIS Benchmarks - Fail", "Failed CIS Benchmarks", "CIS Benchmarks - Fail", df_failed_cis, writer
-            )
-            self.cis_detected = True
-        except KeyError:
-            if self.verbosity > 1:
-                print(f'[{self.cyan_text("*")}] "CIS benchmarks - Fail" not detected')
+    # def cis(self, df, writer):
+    #     """Parse the kube-bench JSON file to generate a sheet containing the CIS benchmarks that failed and warned"""
+    #     try:
+    #         # Fail
+    #         df_failed_cis = df[df["status"] == "FAIL"]
+    #         df_failed_cis = df_failed_cis[
+    #             ["status", "test_number", "test_desc", "audit", "AuditConfig", "reason", "remediation"]
+    #         ]
+    #         df_failed_cis = df_failed_cis.rename(
+    #             columns={
+    #                 "status": "Status",
+    #                 "test_number": "Test Number",
+    #                 "test_desc": "Test Description",
+    #                 "audit": "Audit",
+    #                 "AuditConfig": "Audit Config",
+    #                 "reason": "Reason",
+    #                 "remediation": "Remediation",
+    #             }
+    #         )
+    #         self.colour_cells_and_save_to_excel(
+    #             "CIS Benchmarks - Fail", "Failed CIS Benchmarks", "CIS Benchmarks - Fail", df_failed_cis, writer
+    #         )
+    #         self.cis_detected = True
+    #     except KeyError:
+    #         if self.verbosity > 1:
+    #             print(f'[{self.cyan_text("*")}] "CIS benchmarks - Fail" not detected')
 
-        try:
-            # Warn
-            df_warn_cis = df[df["status"] == "WARN"]
-            df_warn_cis = df_warn_cis[
-                ["status", "test_number", "test_desc", "audit", "AuditConfig", "reason", "remediation"]
-            ]
-            df_warn_cis = df_warn_cis.rename(
-                columns={
-                    "status": "Status",
-                    "test_number": "Test Number",
-                    "test_desc": "Test Description",
-                    "audit": "Audit",
-                    "AuditConfig": "Audit Config",
-                    "reason": "Reason",
-                    "remediation": "Remediation",
-                }
-            )
-            self.colour_cells_and_save_to_excel(
-                "CIS Benchmarks - Warn", "Warn CIS Benchmarks", "CIS Benchmarks - Warn", df_warn_cis, writer
-            )
-            self.cis_detected = True
-        except KeyError:
-            if self.verbosity > 1:
-                print(f'[{self.cyan_text("*")}] "CIS benchmarks - Warn" not detected')
+    #     try:
+    #         # Warn
+    #         df_warn_cis = df[df["status"] == "WARN"]
+    #         df_warn_cis = df_warn_cis[
+    #             ["status", "test_number", "test_desc", "audit", "AuditConfig", "reason", "remediation"]
+    #         ]
+    #         df_warn_cis = df_warn_cis.rename(
+    #             columns={
+    #                 "status": "Status",
+    #                 "test_number": "Test Number",
+    #                 "test_desc": "Test Description",
+    #                 "audit": "Audit",
+    #                 "AuditConfig": "Audit Config",
+    #                 "reason": "Reason",
+    #                 "remediation": "Remediation",
+    #             }
+    #         )
+    #         self.colour_cells_and_save_to_excel(
+    #             "CIS Benchmarks - Warn", "Warn CIS Benchmarks", "CIS Benchmarks - Warn", df_warn_cis, writer
+    #         )
+    #         self.cis_detected = True
+    #     except KeyError:
+    #         if self.verbosity > 1:
+    #             print(f'[{self.cyan_text("*")}] "CIS benchmarks - Warn" not detected')
 
-        try:
-            # Pass
-            df_pass_cis = df[df["status"] == "PASS"]
-            df_pass_cis = df_pass_cis[
-                ["status", "test_number", "test_desc", "audit", "AuditConfig", "reason", "remediation"]
-            ]
-            df_pass_cis = df_pass_cis.rename(
-                columns={
-                    "status": "Status",
-                    "test_number": "Test Number",
-                    "test_desc": "Test Description",
-                    "audit": "Audit",
-                    "AuditConfig": "Audit Config",
-                    "reason": "Reason",
-                    "remediation": "Remediation",
-                }
-            )
-            self.colour_cells_and_save_to_excel(
-                "CIS benchmarks - Pass", "Passed CIS Benchmarks", "CIS benchmarks - Pass", df_pass_cis, writer
-            )
-            self.cis_detected = True
+    #     try:
+    #         # Pass
+    #         df_pass_cis = df[df["status"] == "PASS"]
+    #         df_pass_cis = df_pass_cis[
+    #             ["status", "test_number", "test_desc", "audit", "AuditConfig", "reason", "remediation"]
+    #         ]
+    #         df_pass_cis = df_pass_cis.rename(
+    #             columns={
+    #                 "status": "Status",
+    #                 "test_number": "Test Number",
+    #                 "test_desc": "Test Description",
+    #                 "audit": "Audit",
+    #                 "AuditConfig": "Audit Config",
+    #                 "reason": "Reason",
+    #                 "remediation": "Remediation",
+    #             }
+    #         )
+    #         self.colour_cells_and_save_to_excel(
+    #             "CIS benchmarks - Pass", "Passed CIS Benchmarks", "CIS benchmarks - Pass", df_pass_cis, writer
+    #         )
+    #         self.cis_detected = True
 
-        except KeyError:
-            if self.verbosity > 1:
-                print(f'[{self.cyan_text("*")}] "CIS benchmarks - Warn" not detected')
+    #     except KeyError:
+    #         if self.verbosity > 1:
+    #             print(f'[{self.cyan_text("*")}] "CIS benchmarks - Warn" not detected')
 
-    def apparmor(self, df, writer):
+    def apparmor(self, df: pd.DataFrame, writer: Any) -> None:
         """AppArmor annotation disabled and missing"""
         try:
             # Apparmor disabled
@@ -1383,7 +1387,7 @@ class Kubenumerate:
             if self.verbosity > 1:
                 print(f'[{self.cyan_text("*")}] "Apparmor - Missing" not detected')
 
-    def asat(self, df, writer):
+    def asat(self, df: pd.DataFrame, writer: Any) -> None:
         """Automount ServiceAccount Token True And Default SA"""
         try:
             df_automount_sa = df[df["AuditResultName"] == "AutomountServiceAccountTokenTrueAndDefaultSA"]
@@ -1410,7 +1414,7 @@ class Kubenumerate:
             if self.verbosity > 1:
                 print(f'[{self.cyan_text("*")}] "Automount SA" not detected')
 
-    def caps(self, df, writer):
+    def caps(self, df: pd.DataFrame, writer: Any) -> None:
         """Capabilities"""
         try:
             # Missing Caps or Security Context
@@ -1499,7 +1503,7 @@ class Kubenumerate:
             if self.verbosity > 1:
                 print(f'[{self.cyan_text("*")}] "Capabilities - No Drop All" not detected')
 
-    def dep_api(self, df, writer):
+    def dep_api(self, df: pd.DataFrame, writer: Any) -> None:
         """Deprecated API used"""
         try:
             df_dep_api_used = df[df["AuditResultName"] == "DeprecatedAPIUsed"]
@@ -1543,7 +1547,7 @@ class Kubenumerate:
             if self.verbosity > 1:
                 print(f'[{self.cyan_text("*")}] "Deprecated API Used')
 
-    def host_ns(self, df, writer):
+    def host_ns(self, df: pd.DataFrame, writer: Any) -> None:
         """Host namespace"""
         try:
             # Namespace Host PID True
@@ -1599,7 +1603,7 @@ class Kubenumerate:
             if self.verbosity > 1:
                 print(f'[{self.cyan_text("*")}] "Host Namespace - hostNetwork true" not detected')
 
-    def limits(self, df, writer):
+    def limits(self, df: pd.DataFrame, writer: Any) -> None:
         """Limits"""
         try:
             # Limits Not Set
@@ -1657,7 +1661,7 @@ class Kubenumerate:
             if self.verbosity > 1:
                 print(f'[{self.cyan_text("*")}] "Limits - CPU Not set" not detected')
 
-    def mounts(self, df, writer):
+    def mounts(self, df: pd.DataFrame, writer: Any) -> None:
         """Mounted paths"""
         try:
             # Sensitive Paths Mounted
@@ -1704,7 +1708,7 @@ class Kubenumerate:
             if self.verbosity > 1:
                 print(f'[{self.cyan_text("*")}] "Mounts - Sensitive Paths" not detected')
 
-    def net_pols(self, df, writer):
+    def net_pols(self, df: pd.DataFrame, writer: Any) -> None:
         """Network policies"""
         try:
             # Missing Default Deny Ingress And Egress Network Policy
@@ -1757,7 +1761,7 @@ class Kubenumerate:
             if self.verbosity > 1:
                 print(f'[{self.cyan_text("*")}] "NetworkPolicies - Allow all" not detected')
 
-    def non_root(self, df, writer):
+    def non_root(self, df: pd.DataFrame, writer: Any) -> None:
         """Running as"""
         try:
             # Run As Non Root PSC Nil CSC Nil
@@ -1855,7 +1859,7 @@ class Kubenumerate:
             if self.verbosity > 1:
                 print(f'[{self.cyan_text("*")}] "Non Root - PSC UID 0" not detected')
 
-    def privesc(self, df, writer):
+    def privesc(self, df: pd.DataFrame, writer: Any) -> None:
         """Privilege escalation"""
         try:
             # Allow Privilege Escalation Nil
@@ -1915,7 +1919,7 @@ class Kubenumerate:
             if self.verbosity > 1:
                 print(f'[{self.cyan_text("*")}] "PrivilegeEscalation - True" not detected')
 
-    def privileged(self, df, writer):
+    def privileged(self, df: pd.DataFrame, writer: Any) -> None:
         """Privileged"""
         try:
             # Privileged Nil
@@ -1979,7 +1983,7 @@ class Kubenumerate:
             if self.verbosity > 1:
                 print(f'[{self.cyan_text("*")}] "Privileged - True" not detected')
 
-    def root_fs(self, df, writer):
+    def root_fs(self, df: pd.DataFrame, writer: Any) -> None:
         """Root filesystem"""
         try:
             # ReadOnlyRootFilesystem Nil
@@ -2008,7 +2012,7 @@ class Kubenumerate:
             if self.verbosity > 1:
                 print(f'[{self.cyan_text("*")}] "Root FileSystem - ReadOnly Nil" not detected')
 
-    def seccomp(self, df, writer):
+    def seccomp(self, df: pd.DataFrame, writer: Any) -> None:
         """Seccomp profile"""
         try:
             # Seccomp Profile Missing
@@ -2040,7 +2044,7 @@ class Kubenumerate:
                 print(f'[{self.cyan_text("*")}] "Seccomp - Missing" not detected')
 
     @staticmethod
-    def show_status_bar(iteration, resource, count, start, size=50):
+    def show_status_bar(iteration: int, resource: str, count: int, start: float, size: int = 50) -> None:
         """Quick function to show a nice status bar to stdout"""
         x = int(size * iteration / count)
         if iteration != 0:
@@ -2057,14 +2061,17 @@ class Kubenumerate:
             flush=True,
         )
 
-    def recover_from_aborted_scan(self):
+    def recover_from_aborted_scan(self) -> Tuple[List[Any], List[Any], List[Any], int, bool]:
         """Detect if there are any aborted lists"""
 
         if os.path.isfile(self.pkl_recovery) and os.path.getsize(self.pkl_recovery) > 0:
             # File exists and has content. Restore it
             with open(self.pkl_recovery, "rb") as recovery_file:
                 data = pickle.load(recovery_file)
-                scanned_images, vuln_images, vuln_containers, iteration = data
+                scanned_images: List[Any] = list(data[0])
+                vuln_images: List[Any] = list(data[1])
+                vuln_containers: List[Any] = list(data[2])
+                iteration: int = data[3]
                 print(
                     f'{self.cyan_text("[*]")} Restoring data from previous interrupted scan: '
                     f"jumping to pod #{iteration}"
@@ -2074,7 +2081,7 @@ class Kubenumerate:
         # Otherwise, return new lists
         return [], [], [], 0, False
 
-    def recover_from_aborted_scan_dict(self):
+    def recover_from_aborted_scan_dict(self) -> Tuple[Dict[str, Any], int, bool]:
         """Detect if there are any aborted lists"""
 
         if os.path.isfile(self.pkl_recovery) and os.path.getsize(self.pkl_recovery) > 0:
@@ -2091,7 +2098,7 @@ class Kubenumerate:
         # Otherwise, return new vars
         return {}, 0, False
 
-    def run_trivy(self, image_name):
+    def run_trivy(self, image_name: str) -> Any:
         """Run Trivy against the specified image"""
 
         command = f"{self.trivy_bin} i -q --scanners vuln --severity HIGH,CRITICAL --format json {image_name}"
@@ -2107,7 +2114,7 @@ class Kubenumerate:
         trivy_output = process.stdout.decode("utf-8")
         return json.loads(trivy_output)
 
-    def trivy_parser(self, writer):
+    def trivy_parser(self, writer: Any) -> None:
         """Run trivy against every image in every container and save output to Excel file.
         The function will recover from any crashed instance
         """
@@ -2134,7 +2141,7 @@ class Kubenumerate:
         # Create recovery file if it doesn't exist
         self.pkl_recovery = f"{self.out_path}.kubenumerate_trivy_log_lists.pkl"
         if not os.path.exists(self.pkl_recovery):
-            Path.touch(self.pkl_recovery, 0o644)
+            Path.touch(Path(self.pkl_recovery), 0o644)
 
         if self.verbosity > 1:
             print(
@@ -2271,9 +2278,9 @@ class Kubenumerate:
                         f"{self.cyan_text(self.pkl_recovery)}..."
                     )
                 sys.exit(99)
-            except json.decoder.JSONDecodeError or ValueError as e:
-                if self.verbosity > 1:
-                    print(f"Error: {str(e)}")
+            # except json.decoder.JSONDecodeError or ValueError as e:
+            #     if self.verbosity > 1:
+            #         print(f"Error: {str(e)}")
             except KeyError as e:
                 if self.verbosity > 1:
                     print("Key error:", e)
@@ -2306,7 +2313,7 @@ class Kubenumerate:
         else:
             print(f'{self.green_text("[+]")} No images found containing any high- or critical-risk issues')
 
-    def raise_issues(self):
+    def raise_issues(self) -> None:
         """Suggest what issues might be present"""
 
         issues_raised = {
@@ -2359,10 +2366,10 @@ class Kubenumerate:
             print(f'\t{self.red_text("[!]")} Containers Allowing Privilege Escalation')
             issues_raised["privileged"] = True
 
-        # CIS Benchmarks
-        if self.cis_detected:
-            print(f'\t{self.red_text("[!]")} CIS Benchmarks')
-            issues_raised["cis_detected"] = True
+        # # CIS Benchmarks
+        # if self.cis_detected:
+        #     print(f'\t{self.red_text("[!]")} CIS Benchmarks')
+        #     issues_raised["cis_detected"] = True
 
         # CPU usage
         if not self.limits_set:
@@ -2381,7 +2388,9 @@ class Kubenumerate:
 
     # TODO: Minimal improvement: check whether @static works fine here
     @staticmethod
-    def colour_cells_and_save_to_excel(title, subtitle, sheet_name, df, writer):
+    def colour_cells_and_save_to_excel(
+        title: str, subtitle: str, sheet_name: str, df: pd.DataFrame, writer: Any
+    ) -> None:
         workbook = writer.book
         worksheet = workbook.add_worksheet(sheet_name)
         worksheet.set_zoom(90)
@@ -2412,7 +2421,7 @@ class Kubenumerate:
 
         df.to_excel(writer, index=False, sheet_name=sheet_name, startrow=3, header=False)
 
-    def print_banner(self):
+    def print_banner(self) -> None:
         banner = f"""
            {self.cyan_text('  +-----+')}{self.red_text('  1. -----')}
            {self.cyan_text(' /     /|')}{self.red_text('  2. -----')}
@@ -2426,7 +2435,7 @@ class Kubenumerate:
             f'\t  {self.green_text("By 0x5ubt13")} {self.yellow_text(f"v{self.version}")}\n'
         )
 
-    def generate_kubeaudit_equivalent_df_from_kubectl(self):
+    def generate_kubeaudit_equivalent_df_from_kubectl(self) -> pd.DataFrame:
         """
         Parse kubectl output (pods, deployments, etc.) and generate a DataFrame with the columns expected by the
         kubeaudit check methods. This replaces the need for kubeaudit output.
@@ -2817,7 +2826,7 @@ class Kubenumerate:
         return df
 
 
-def main():
+def main() -> None:
     instance = Kubenumerate()
     instance.run()
 

@@ -9,10 +9,10 @@ description = "A comprehensive Kubernetes security auditing tool"
 readme = "README.md"
 license = {text = "MIT"}
 authors = [
-    {name = "Subtle", email = "subtle@example.com"}
+    {name = "Subtle", email = "5ubt13@protonmail.com"}
 ]
 maintainers = [
-    {name = "Subtle", email = "subtle@example.com"}
+    {name = "Subtle", email = "5ubt13@protonmail.com"}
 ]
 keywords = ["kubernetes", "security", "audit", "compliance", "cis"]
 classifiers = [
@@ -30,7 +30,7 @@ classifiers = [
     "Topic :: Security",
     "Topic :: System :: Systems Administration",
 ]
-requires-python = ">=3.8"
+requires-python = ">=3.12"
 dependencies = [
     "pandas>=1.5.0",
     "requests>=2.28.0",
@@ -97,7 +97,7 @@ exclude = [
 ]
 
 [tool.mypy]
-python_version = "3.8"
+python_version = "3.12"
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = true
