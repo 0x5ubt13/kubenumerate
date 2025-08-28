@@ -1089,28 +1089,27 @@ class Kubenumerate:
             kube_bench_config_flag = "--config-dir /tmp/kube-bench/cfg/"
 
         command = f"{self.kube_bench_bin} {kube_bench_config_flag} run --targets=node,policies --json".split(" ")
-        sudo, kube_bench_error = False, ""
+        sudo = False
         while True:
             try:
                 if sudo:
                     command.insert(0, "sudo")
                 process = subprocess.run(command, check=True, capture_output=True, text=True)
+
                 with open(self.kube_bench_file, "w") as output_kube_bench_file:
                     output_kube_bench_file.write(process.stdout)
+
                 if self.verbosity > 0:
                     print(f'{self.green_text("[+]")} Done. Kube-bench output saved to '
                           f'{self.cyan_text(self.kube_bench_file)}')
                     return
-            except subprocess.CalledProcessError as kube_bench_error:
-                print(f'{self.red_text("[-]")} Error: {kube_bench_error.stderr.strip()}')
+
+            except subprocess.CalledProcessError:
                 if not sudo:
-                    print(f'{self.red_text("[-]")} Process exited with code {kube_bench_error.returncode}: '
-                          f'{kube_bench_error}. Retrying with sudo...')
+                    print(f'{self.red_text("[-]")} Process exited prematurely. Retrying with sudo...')
                     sudo = True
                     continue
-                print(f'{self.red_text("[-]")} An elevated Kube-bench process still exited with code '
-                      f'{kube_bench_error.returncode}: {kube_bench_error}. Please check why Kube-bench isn\'t working')
-                return
+                print(f'{self.red_text("[-]")} Error running kube-bench.')
 
     def cis(self, df, writer):
         """Parse the kube-bench JSON file to generate a sheet containing the CIS benchmarks that failed and warned"""
@@ -2108,8 +2107,8 @@ class Kubenumerate:
             "limits_set": False,
         }
 
-        if (self.hardened and not self.automount and not self.vuln_image and self.version_diff <= 1 
-            and not self.privileged_flag and not self.cis_detected and not self.limits_set):
+        if (self.hardened and not self.automount and not self.vuln_image and self.version_diff <= 1
+                and not self.privileged_flag and not self.cis_detected and not self.limits_set):
             print(f'{self.green_text("[+]")} No findings detected in the cluster.')
             return
 
