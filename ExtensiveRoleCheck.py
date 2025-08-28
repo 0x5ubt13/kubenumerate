@@ -1,7 +1,7 @@
 import json
 import argparse
 import logging
-from colorama import init, Fore, Back, Style
+from colorama import init, Fore
 
 
 def str2bool(v):
@@ -60,7 +60,7 @@ class ExtensiveRolesChecker(object):
         for entity in self._json_file['items']:
             role_name = entity['metadata']['name']
             try:
-                iterator = iter(entity['rules'])
+                iter(entity['rules'])
             except TypeError:
                 continue
             for rule in entity['rules']:
@@ -77,7 +77,7 @@ class ExtensiveRolesChecker(object):
                 self.pods_exec(rule, role_name)
                 self.pods_attach(rule, role_name)
 
-    #Read cluster secrets:
+    # Read cluster secrets:
     def get_read_secrets(self, rule, role_name):
         verbs = ['*', 'get', 'list']
         if ('secrets' in rule['resources'] and any([sign for sign in verbs if sign in rule['verbs']])):
@@ -95,7 +95,7 @@ class ExtensiveRolesChecker(object):
                 self._role.warning(f'{Fore.GREEN}{filtered_name}' + f'{Fore.RED} Has permission to list configmaps!')
                 self.add_result(filtered_name, 'Has permission to list configmaps!')
 
-    #Any Any roles
+    # Any Any roles
     def clusteradmin_role(self, rule, role_name):
         if ('*' in rule['resources'] and '*' in rule['verbs']):
             filtered_name = self.get_non_default_name(role_name)
@@ -103,7 +103,7 @@ class ExtensiveRolesChecker(object):
                 self._role.warning(f'{Fore.GREEN}{filtered_name}' + f'{Fore.RED} Has Admin-Cluster permission!')
                 self.add_result(filtered_name, 'Has Admin-Cluster permission!')
 
-    #get ANY verbs:
+    # get ANY verbs:
     def any_verb(self, rule, role_name):
         resources = ['secrets',
                      'configmaps',
@@ -349,7 +349,7 @@ class SubjectViewer:
         if pod.get('metadata').get('labels').get('app', '') != '':
             metadata['app'] = pod.get('metadata').get('labels').get('app', '')
 
-        if owner_references != None and len(owner_references) > 0:
+        if owner_references is not None and len(owner_references) > 0:
             metadata[owner_references[0].get('kind')] = owner_references[0].get('name')
 
         if pod.get('metadata').get('labels').get('heritage', '') == 'Helm':

@@ -49,7 +49,7 @@ class Kubenumerate:
 
         if requisites is None:
             requisites = []
-        user = os.environ.get('USER', 'subtle')
+        # user = os.environ.get('USER', 'subtle')
         self.args = args
         self.automount = automount
         self.brew_bin = brew_bin
@@ -138,7 +138,7 @@ class Kubenumerate:
             '--output',
             '-o',
             help="Select a different folder for all the output. Default: '/tmp/kubenumerate_out/'",
-            default=f"/tmp/kubenumerate_out/")
+            default='/tmp/kubenumerate_out/')
         parser.add_argument(
             '--trivy-file',
             '-t',
@@ -195,8 +195,8 @@ class Kubenumerate:
     def brew_pathfinder(self):
         """Find brew bin directory"""
 
-        paths = [f'/home/linuxbrew/.linuxbrew/bin', f'{Path.home()}/.linuxbrew/bin', f'/usr/local/bin',
-                 f'/opt/homebrew/bin']
+        paths = ['/home/linuxbrew/.linuxbrew/bin', f'{Path.home()}/.linuxbrew/bin', '/usr/local/bin',
+                 '/opt/homebrew/bin']
 
         self.brew_path = next((path for path in paths if os.path.exists(path)), None)
         self.brew_bin = f'{self.brew_path}/brew' if os.path.exists(f'{self.brew_path}/brew') else None
@@ -391,26 +391,26 @@ class Kubenumerate:
         try:
             shell = os.environ['SHELL']
         except KeyError:
-            try: 
+            try:
                 shell = shutil.which("bash")
             except Exception as e:
                 print(f'{self.red_text("[-]")} Error: Could not determine the shell. Please set the SHELL environment '
-                      f'variable to your shell\'s path.')
+                      f'variable to your shell\'s path.\nFull error: {e}')
                 sys.exit(1)
         c = ""
         try:
             c = f"(echo; echo \'eval \"$({self.brew_bin} shellenv)\"\') >> /home/{os.environ['USER']}/"
         except KeyError:
-            try: 
+            try:
                 c = f"(echo; echo \'eval \"$({self.brew_bin} shellenv)\"\') >> {self.home_dir}/"
             except Exception as e:
                 print(f'{self.red_text("[-]")} Error: Could not determine the home directory. Please set the HOME '
-                      f'environment variable to your home directory\'s path.')
+                      f'environment variable to your home directory\'s path.\nFull error: {e}')
                 sys.exit(1)
         if tool == "brew":
             try:
                 subprocess.run(
-                    f'/bin/bash -c "$(curl -fsSLk https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"',
+                    '/bin/bash -c "$(curl -fsSLk https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"',
                     shell=True)
                 # Add homebrew to user's PATH
                 if "zsh" in shell:
@@ -498,8 +498,8 @@ class Kubenumerate:
                     return next(asset['browser_download_url']
                                 for asset in latest['assets'] if 'linux_amd64.tar.gz' in asset['name'])
                 if self.host_arch == "darwin_amd64":
-                        return next(asset['browser_download_url']
-                                    for asset in latest['assets'] if 'darwin_amd64.tar.gz' in asset['name'])
+                    return next(asset['browser_download_url']
+                                for asset in latest['assets'] if 'darwin_amd64.tar.gz' in asset['name'])
                 if self.host_arch == "darwin_arm64":
                     return next(asset['browser_download_url']
                                 for asset in latest['assets'] if 'darwin_arm64.tar.gz' in asset['name'])
@@ -1102,6 +1102,7 @@ class Kubenumerate:
                           f'{self.cyan_text(self.kube_bench_file)}')
                     return
             except subprocess.CalledProcessError as kube_bench_error:
+                print(f'{self.red_text("[-]")} Error: {kube_bench_error.stderr.strip()}')
                 if not sudo:
                     print(f'{self.red_text("[-]")} Process exited with code {kube_bench_error.returncode}: '
                           f'{kube_bench_error}. Retrying with sudo...')
@@ -2107,8 +2108,8 @@ class Kubenumerate:
             "limits_set": False,
         }
 
-        if (self.hardened and not self.automount and not self.vuln_image and self.version_diff <= 1 and
-                not self.privileged_flag and not self.cis_detected and not self.limits_set):
+        if (self.hardened and not self.automount and not self.vuln_image and self.version_diff <= 1 
+            and not self.privileged_flag and not self.cis_detected and not self.limits_set):
             print(f'{self.green_text("[+]")} No findings detected in the cluster.')
             return
 
@@ -2201,7 +2202,7 @@ class Kubenumerate:
            {self.cyan_text('+-----+')}{self.green_text('  6. -----')}""")
         print(
             f'{self.cyan_text(banner)}\n'
-            f'\t     Kubenumerate\n' 
+            f'\t     Kubenumerate\n'
             f'\t  {self.green_text("By 0x5ubt13")} {self.yellow_text(f"v{self.version}")}\n')
 
     def generate_kubeaudit_equivalent_df_from_kubectl(self):
@@ -2485,7 +2486,7 @@ class Kubenumerate:
                     # NetworkPolicies (global, not per pod)
                     if kind == "NetworkPolicy":
                         spec_policy = item.get("spec", {})
-                        pod_selector = spec_policy.get("podSelector", {})
+                        # pod_selector = spec_policy.get("podSelector", {})
                         policy_types = spec_policy.get("policyTypes", [])
                         if "Ingress" in policy_types and not spec_policy.get("ingress"):
                             findings.append({

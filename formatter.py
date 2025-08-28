@@ -1,5 +1,4 @@
 import pandas as pd
-from xlsxwriter.utility import xl_rowcol_to_cell
 
 # try for now only with the first sheet
 df = pd.read_excel("kubenumerate_results_v1_0.xlsx", "Capabilities - Added")
@@ -13,18 +12,17 @@ with pd.ExcelWriter("enhanced.xlsx", engine="xlsxwriter", mode="w") as writer:
     worksheet = workbook.add_worksheet("Capabilities - Added")
     worksheet.set_zoom(90)
 
-    worksheet.set_column(0, len(df.columns)-1, 20)
+    worksheet.set_column(0, len(df.columns) - 1, 20)
     header_format = workbook.add_format({
-        'font_name': 'Calibri', # Default right now, but including in case changes in the future
+        'font_name': 'Calibri',  # Default right now, but including in case changes in the future
         'bg_color': '#A93545',
         'bold': True,
         'font_color': 'white',
         'align': 'left',
     })
 
-    # title = "AppArmor Disabled"
     title = "Capabilities - Added"
-    #merge cells
+    # Merge cells
     title_format = workbook.add_format({
         'font_name': 'Calibri',
         'bg_color': '#A93545',
@@ -37,7 +35,7 @@ with pd.ExcelWriter("enhanced.xlsx", engine="xlsxwriter", mode="w") as writer:
     # note down how many cells title and subheader require
     worksheet.merge_range('A1:AC1', title, title_format)
     worksheet.merge_range('A2:AC2', subtitle)
-    worksheet.set_row(2, 15) # row height to 15
+    worksheet.set_row(2, 15)  # row height to 15
     df = df.rename(columns={
         "ResourceNamespace": "Resource Namespace",
         "ResourceKind": "Resource Kind",
@@ -53,13 +51,10 @@ with pd.ExcelWriter("enhanced.xlsx", engine="xlsxwriter", mode="w") as writer:
     bg_format2 = workbook.add_format({'bg_color': 'white'})  # white cell background color
 
     skip_three = 3
-    for row in range(df.shape[0]+3):
+    for row in range(df.shape[0] + 3):
         if skip_three > 0:
             skip_three -= 1
             continue
         worksheet.set_row(row, cell_format=(bg_format1 if row % 2 == 0 else bg_format2))
 
     df.to_excel(writer, index=False, sheet_name="Capabilities - Added", startrow=3, header=False)
-
-
-
