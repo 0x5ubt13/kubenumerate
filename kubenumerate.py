@@ -30,21 +30,64 @@ except ImportError:
 
 
 class Kubenumerate:
-    """ A class to automatically launch and parse several Kubernetes security auditing tools, by Subtle.
-        PRs: https://github.com/0x5ubt13/kubenumerate
+    """A class to automatically launch and parse several Kubernetes security auditing tools, by Subtle.
+    PRs: https://github.com/0x5ubt13/kubenumerate
     """
 
-    def __init__(self, args="", automount=False, brew_bin="", brew_path="", cis=False,
-                 cluster_version="", date=datetime.now().strftime("%b%y"), depr_api=False, dry_run=False,
-                 excel_file="kubenumerate_results_v1_0.xlsx", home_dir=Path.home(), hardened=True,
-                 host_os=platform.system(), host_arch="", inst_jq=False, inst_kubeaudit=False, inst_kubebench=False,
-                 inst_kubectl=False, inst_kubiscan=False, inst_trivy=False, inst_wget=False, install=False, jq_bin="",
-                 kubeaudit_bin="", kubeaudit_file="", kube_bench_bin="", kube_bench_file="", kubeconfig_path=None,
-                 kubectl_bin="kubectl", kubectl_path="/tmp/kubenumerate_out/kubectl_output/", kube_version="v1.33.3",
-                 kubiscan_path="/tmp/kubiscan/", kubiscan_py="", limits=True, namespace='-A',
-                 out_path="/tmp/kubenumerate_out/", pkl_recovery="", pods="", pods_file="", privesc=False,
-                 privileged=False, py_bin=sys.executable, requisites=None, sus_rbac=False, trivy_bin="",
-                 trivy_file="", verbosity=1, version=None, version_diff=0, vuln_image=False, wget_bin=""):
+    def __init__(
+        self,
+        args="",
+        automount=False,
+        brew_bin="",
+        brew_path="",
+        cis=False,
+        cluster_version="",
+        date=datetime.now().strftime("%b%y"),
+        depr_api=False,
+        dry_run=False,
+        excel_file="kubenumerate_results_v1_0.xlsx",
+        home_dir=Path.home(),
+        hardened=True,
+        host_os=platform.system(),
+        host_arch="",
+        inst_jq=False,
+        inst_kubeaudit=False,
+        inst_kubebench=False,
+        inst_kubectl=False,
+        inst_kubiscan=False,
+        inst_trivy=False,
+        inst_wget=False,
+        install=False,
+        jq_bin="",
+        kubeaudit_bin="",
+        kubeaudit_file="",
+        kube_bench_bin="",
+        kube_bench_file="",
+        kubeconfig_path=None,
+        kubectl_bin="kubectl",
+        kubectl_path="/tmp/kubenumerate_out/kubectl_output/",
+        kube_version="v1.33.3",
+        kubiscan_path="/tmp/kubiscan/",
+        kubiscan_py="",
+        limits=True,
+        namespace="-A",
+        out_path="/tmp/kubenumerate_out/",
+        pkl_recovery="",
+        pods="",
+        pods_file="",
+        privesc=False,
+        privileged=False,
+        py_bin=sys.executable,
+        requisites=None,
+        sus_rbac=False,
+        trivy_bin="",
+        trivy_file="",
+        verbosity=1,
+        version=None,
+        version_diff=0,
+        vuln_image=False,
+        wget_bin="",
+    ):
         """Initialize attributes"""
 
         if requisites is None:
@@ -108,54 +151,57 @@ class Kubenumerate:
 
         # TODO: make no colour flag for those using a light mode terminal. Then in colour methods simply use black
         parser = argparse.ArgumentParser(
-            description='Uses local kubeconfig file to launch kube-bench, kubectl, trivy and KubiScan '
-                        'and parses all useful output to excel.')
+            description="Uses local kubeconfig file to launch kube-bench, kubectl, trivy and KubiScan "
+            "and parses all useful output to excel."
+        )
         parser.add_argument(
-            '--cheatsheet',
-            '-c',
-            action='store_true',
-            help="Print commands to extract info from the cluster and work offline")
+            "--cheatsheet",
+            "-c",
+            action="store_true",
+            help="Print commands to extract info from the cluster and work offline",
+        )
         parser.add_argument(
-            '--dry-run',
-            '-d',
-            action='store_true',
-            help="Don't contact the Kubernetes API - do all work locally")
+            "--dry-run", "-d", action="store_true", help="Don't contact the Kubernetes API - do all work locally"
+        )
         parser.add_argument(
-            '--excel-out',
-            '-e',
+            "--excel-out",
+            "-e",
             help="Select a different name for your excel file. Default: kubenumerate_results_v1_0.xlsx",
-            default='kubenumerate_results_v1_0.xlsx')
+            default="kubenumerate_results_v1_0.xlsx",
+        )
+        parser.add_argument("--kubeconfig", "-k", help="Select a specific Kubeconfig file you want to use")
         parser.add_argument(
-            '--kubeconfig',
-            '-k',
-            help="Select a specific Kubeconfig file you want to use")
-        parser.add_argument(
-            '--namespace',
-            '-n',
+            "--namespace",
+            "-n",
             help="Select a specific namespace to test, if your scope is restricted. Default: -A",
-            default="-A")
+            default="-A",
+        )
         parser.add_argument(
-            '--output',
-            '-o',
+            "--output",
+            "-o",
             help="Select a different folder for all the output. Default: '/tmp/kubenumerate_out/'",
-            default='/tmp/kubenumerate_out/')
+            default="/tmp/kubenumerate_out/",
+        )
         parser.add_argument(
-            '--trivy-file',
-            '-t',
-            help="Run trivy from a pods dump in json instead of running kubectl using your kubeconfig file")
+            "--trivy-file",
+            "-t",
+            help="Run trivy from a pods dump in json instead of running kubectl using your kubeconfig file",
+        )
         parser.add_argument(
-            '--verbosity',
-            '-v',
+            "--verbosity",
+            "-v",
             help="Select a verbosity level. (0 = quiet | 1 = default | 2 = verbose/debug)",
-            default=1)
+            default=1,
+        )
         self.args = parser.parse_args()
 
     def check_os(self):
         """Detect if script is being run in macOS, Linux or other, and its architecture"""
+
         class ArchitectureNotSupported(Exception):
             def __init__(self, message, supported_architectures=None):
                 self.message = message
-                self.supported_architectures = supported_architectures or ['Linux amd64', 'macOS amd64', 'macOS arm64']
+                self.supported_architectures = supported_architectures or ["Linux amd64", "macOS amd64", "macOS arm64"]
                 super().__init__(self.message)
 
             def get_currently_supported_architectures(self):
@@ -183,23 +229,31 @@ class Kubenumerate:
                 case "Windows" | "FreeBSD" | "OpenBSD" | _:
                     raise ArchitectureNotSupported(f"OS {self.host_os} not supported.")
         except ArchitectureNotSupported as e:
-            print(f'{self.red_text("[-]")} Architecture error: {e}\nCurrently, {self.cyan_text("Kubenumerate")} '
-                  f'supports the following OS and architectures: {e.get_currently_supported_architectures()}')
+            print(
+                f'{self.red_text("[-]")} Architecture error: {e}\nCurrently, {self.cyan_text("Kubenumerate")} '
+                f"supports the following OS and architectures: {e.get_currently_supported_architectures()}"
+            )
             exit(80)
         except Exception as e:
-            print(f'{self.red_text("[-]")} Error detected when trying to establish the system\'s architecture: {e}\n'
-                  f'Currently supported OSs and architectures:\n\t- Linux amd64\n\t- macOS amd64\n\t- macOS arm64")'
-                  f'{self.cyan_text("Kubenumerate")}')
+            print(
+                f'{self.red_text("[-]")} Error detected when trying to establish the system\'s architecture: {e}\n'
+                f'Currently supported OSs and architectures:\n\t- Linux amd64\n\t- macOS amd64\n\t- macOS arm64")'
+                f'{self.cyan_text("Kubenumerate")}'
+            )
             exit(80)
 
     def brew_pathfinder(self):
         """Find brew bin directory"""
 
-        paths = ['/home/linuxbrew/.linuxbrew/bin', f'{Path.home()}/.linuxbrew/bin', '/usr/local/bin',
-                 '/opt/homebrew/bin']
+        paths = [
+            "/home/linuxbrew/.linuxbrew/bin",
+            f"{Path.home()}/.linuxbrew/bin",
+            "/usr/local/bin",
+            "/opt/homebrew/bin",
+        ]
 
         self.brew_path = next((path for path in paths if os.path.exists(path)), None)
-        self.brew_bin = f'{self.brew_path}/brew' if os.path.exists(f'{self.brew_path}/brew') else None
+        self.brew_bin = f"{self.brew_path}/brew" if os.path.exists(f"{self.brew_path}/brew") else None
 
     def check_requisites(self):
         """Check for kubeaudit, kube-bench, trivy, etc. Shout if they're not present in the system"""
@@ -208,26 +262,32 @@ class Kubenumerate:
         self.brew_pathfinder()
 
         # Kubeaudit
-        self.kubeaudit_bin = f'{self.brew_path}/kubeaudit' \
-            if os.path.exists(f'{self.brew_path}/kubeaudit') else shutil.which("kubeaudit")
+        self.kubeaudit_bin = (
+            f"{self.brew_path}/kubeaudit"
+            if os.path.exists(f"{self.brew_path}/kubeaudit")
+            else shutil.which("kubeaudit")
+        )
         if self.kubeaudit_bin is None:
             self.requisites.append("kubeaudit")
 
         # Kube-bench
-        self.kube_bench_bin = "/tmp/kube-bench/kube-bench" \
-            if os.path.exists('/tmp/kube-bench/kube-bench') else shutil.which("kube-bench")
+        self.kube_bench_bin = (
+            "/tmp/kube-bench/kube-bench" if os.path.exists("/tmp/kube-bench/kube-bench") else shutil.which("kube-bench")
+        )
         if self.kube_bench_bin is None:
             self.requisites.append("kube-bench")
 
         # Kubectl
-        self.kubectl_bin = f'{self.brew_path}/kubectl' \
-            if os.path.exists(f'{self.brew_path}/kubectl') else shutil.which("kubectl")
+        self.kubectl_bin = (
+            f"{self.brew_path}/kubectl" if os.path.exists(f"{self.brew_path}/kubectl") else shutil.which("kubectl")
+        )
         if self.kubectl_bin is None:
             self.requisites.append("kubectl")
 
         # Trivy
-        self.trivy_bin = f'{self.brew_path}/trivy' \
-            if os.path.exists(f'{self.brew_path}/trivy') else shutil.which("trivy")
+        self.trivy_bin = (
+            f"{self.brew_path}/trivy" if os.path.exists(f"{self.brew_path}/trivy") else shutil.which("trivy")
+        )
         if self.trivy_bin is None:
             self.requisites.append("trivy")
 
@@ -237,12 +297,12 @@ class Kubenumerate:
                 self.requisites.append("kubiscan")
 
         # Wget
-        self.wget_bin = f'{self.brew_path}/wget' if os.path.exists(f'{self.brew_path}/wget') else shutil.which("wget")
+        self.wget_bin = f"{self.brew_path}/wget" if os.path.exists(f"{self.brew_path}/wget") else shutil.which("wget")
         if self.wget_bin is None:
             self.requisites.append("wget")
 
         # Jq
-        self.jq_bin = f'{self.brew_path}/jq' if os.path.exists(f'{self.brew_path}/jq') else shutil.which("jq")
+        self.jq_bin = f"{self.brew_path}/jq" if os.path.exists(f"{self.brew_path}/jq") else shutil.which("jq")
         if self.jq_bin is None:
             self.requisites.append("jq")
 
@@ -267,7 +327,7 @@ class Kubenumerate:
             if not self.install:
                 print(f'{self.red_text("[-]")} Please install kube-bench: https://github.com/aquasecurity/kube-bench')
             else:
-                if not os.path.exists('/tmp/kube-bench/kube-bench'):
+                if not os.path.exists("/tmp/kube-bench/kube-bench"):
                     self.install_tool("kube-bench")
                 else:
                     self.kube_bench_bin = "/tmp/kube-bench/kube-bench"
@@ -305,20 +365,24 @@ class Kubenumerate:
             if not self.install:
                 print(f'{self.red_text("[-]")} Please install KubiScan: https://github.com/cyberark/KubiScan')
             else:
-                if not os.path.isfile('/tmp/kubiscan/KubiScan.py'):
+                if not os.path.isfile("/tmp/kubiscan/KubiScan.py"):
                     self.install_tool("kubiscan")
 
         if not self.install:
             sys.exit(2)
 
-        print(f'{self.green_text("[+]")} Rerunning {self.cyan_text("Kubenumerate")} with all necessary software '
-              f'successfully installed in the system. If it fails, please run Kubenumerate again to make sure all '
-              f'tools are in your path')
+        print(
+            f'{self.green_text("[+]")} Rerunning {self.cyan_text("Kubenumerate")} with all necessary software '
+            f"successfully installed in the system. If it fails, please run Kubenumerate again to make sure all "
+            f"tools are in your path"
+        )
         try:
-            os.execv(sys.executable, [f'{self.py_bin}'] + sys.argv)
+            os.execv(sys.executable, [f"{self.py_bin}"] + sys.argv)
         except FileNotFoundError:
-            print(f'{self.red_text("[-]")} Error: Please run {self.cyan_text("Kubenumerate")} again manually '
-                  f'to make sure all tools are in your path.')
+            print(
+                f'{self.red_text("[-]")} Error: Please run {self.cyan_text("Kubenumerate")} again manually '
+                f"to make sure all tools are in your path."
+            )
 
     def ask_for_permission(self):
         """Ask the user for permission to install needed software in the system"""
@@ -331,7 +395,7 @@ class Kubenumerate:
             "kubectl": "inst_kubectl",
             "trivy": "inst_trivy",
             "kubiscan": "inst_kubiscan",
-            "wget": "inst_wget"
+            "wget": "inst_wget",
         }
         print_brew_message = False
 
@@ -345,18 +409,25 @@ class Kubenumerate:
             print(f'\t- {self.yellow_text(f"{tool}")}')
 
         if print_brew_message:
-            print(f'{self.yellow_text("[!]")} {self.cyan_text("Brew")} (https://brew.sh), will be used as the '
-                  f'package manager to install at least some of these. If it\'s not in the system, it will also '
-                  f'be installed.\n')
+            print(
+                f'{self.yellow_text("[!]")} {self.cyan_text("Brew")} (https://brew.sh), will be used as the '
+                f"package manager to install at least some of these. If it's not in the system, it will also "
+                f"be installed.\n"
+            )
 
         while True:
-            answer = input(
-                f'{self.yellow_text("[!]")} Do you give your {self.green_text("consent")} to install all the above?\n'
-                f'\tIf {self.green_text("yes")}, {self.cyan_text("Kubenumerate")} will '
-                f'{self.yellow_text("install all of them")} and {self.yellow_text("restart automatically")}.\n'
-                f'\tIf {self.red_text("no")}, {self.cyan_text("Kubenumerate")} will prompt you where are the official '
-                f'repos to download and install the tools manually from.\n Your choice '
-                f'{self.cyan_text("[y/n]:")} ').strip().lower()
+            answer = (
+                input(
+                    f'{self.yellow_text("[!]")} Do you give your {self.green_text("consent")} to install all the above?\n'
+                    f'\tIf {self.green_text("yes")}, {self.cyan_text("Kubenumerate")} will '
+                    f'{self.yellow_text("install all of them")} and {self.yellow_text("restart automatically")}.\n'
+                    f'\tIf {self.red_text("no")}, {self.cyan_text("Kubenumerate")} will prompt you where are the official '
+                    f"repos to download and install the tools manually from.\n Your choice "
+                    f'{self.cyan_text("[y/n]:")} '
+                )
+                .strip()
+                .lower()
+            )
             if not answer.startswith("y") and not answer.startswith("n"):
                 print(f'{self.red_text("[-]")} Incorrect answer registered. Please type "y" to accept or "n" to deny.')
                 continue
@@ -369,8 +440,9 @@ class Kubenumerate:
                 self.install = False
                 print(
                     f'{self.red_text("[-]")} No consent given, {self.cyan_text("Kubenumerate")} will exit now. '
-                    f'Please find below all the '
-                    f'required tools below and their official repositories for you to manually download and install:\n')
+                    f"Please find below all the "
+                    f"required tools below and their official repositories for you to manually download and install:\n"
+                )
                 break
 
         if not shutil.which("brew"):
@@ -389,29 +461,34 @@ class Kubenumerate:
         print(f'\n{self.cyan_text("[*]")} Installing {tool}...')
         shell = ""
         try:
-            shell = os.environ['SHELL']
+            shell = os.environ["SHELL"]
         except KeyError:
             try:
                 shell = shutil.which("bash")
             except Exception as e:
-                print(f'{self.red_text("[-]")} Error: Could not determine the shell. Please set the SHELL environment '
-                      f'variable to your shell\'s path.\nFull error: {e}')
+                print(
+                    f'{self.red_text("[-]")} Error: Could not determine the shell. Please set the SHELL environment '
+                    f"variable to your shell's path.\nFull error: {e}"
+                )
                 sys.exit(1)
         c = ""
         try:
-            c = f"(echo; echo \'eval \"$({self.brew_bin} shellenv)\"\') >> /home/{os.environ['USER']}/"
+            c = f"(echo; echo 'eval \"$({self.brew_bin} shellenv)\"') >> /home/{os.environ['USER']}/"
         except KeyError:
             try:
-                c = f"(echo; echo \'eval \"$({self.brew_bin} shellenv)\"\') >> {self.home_dir}/"
+                c = f"(echo; echo 'eval \"$({self.brew_bin} shellenv)\"') >> {self.home_dir}/"
             except Exception as e:
-                print(f'{self.red_text("[-]")} Error: Could not determine the home directory. Please set the HOME '
-                      f'environment variable to your home directory\'s path.\nFull error: {e}')
+                print(
+                    f'{self.red_text("[-]")} Error: Could not determine the home directory. Please set the HOME '
+                    f"environment variable to your home directory's path.\nFull error: {e}"
+                )
                 sys.exit(1)
         if tool == "brew":
             try:
                 subprocess.run(
                     '/bin/bash -c "$(curl -fsSLk https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"',
-                    shell=True)
+                    shell=True,
+                )
                 # Add homebrew to user's PATH
                 if "zsh" in shell:
                     subprocess.run(f"{c}.zshrc", shell=True, executable=shell)
@@ -431,8 +508,11 @@ class Kubenumerate:
                     tarball.extractall(path=kube_bench_path)
                     # Find the kube-bench binary
                     self.kube_bench_bin = next(
-                        os.path.join(root, file) for root, dirs, files in os.walk(kube_bench_path) for file in files if
-                        file == "kube-bench")
+                        os.path.join(root, file)
+                        for root, dirs, files in os.walk(kube_bench_path)
+                        for file in files
+                        if file == "kube-bench"
+                    )
                     # Make it executable
                     os.chmod(self.kube_bench_bin, 0o755)
                 if self.verbosity > 1:
@@ -454,7 +534,7 @@ class Kubenumerate:
                 kubiscan_path = "/tmp/kubiscan/"
                 # Extract the tool
                 try:
-                    with zipfile.ZipFile(downloaded_zipball, 'r') as zip_ref:
+                    with zipfile.ZipFile(downloaded_zipball, "r") as zip_ref:
                         zip_ref.extractall(kubiscan_path)
                     if self.verbosity > 1:
                         print(f"DEV DEBUG: {tool}'s repository downloaded and extracted successfully.")
@@ -495,20 +575,29 @@ class Kubenumerate:
             """Needing to do different download types for different tools as assets are not the same"""
             if target == "kube-bench":
                 if self.host_os == "Linux":
-                    return next(asset['browser_download_url']
-                                for asset in latest['assets'] if 'linux_amd64.tar.gz' in asset['name'])
+                    return next(
+                        asset["browser_download_url"]
+                        for asset in latest["assets"]
+                        if "linux_amd64.tar.gz" in asset["name"]
+                    )
                 if self.host_arch == "darwin_amd64":
-                    return next(asset['browser_download_url']
-                                for asset in latest['assets'] if 'darwin_amd64.tar.gz' in asset['name'])
+                    return next(
+                        asset["browser_download_url"]
+                        for asset in latest["assets"]
+                        if "darwin_amd64.tar.gz" in asset["name"]
+                    )
                 if self.host_arch == "darwin_arm64":
-                    return next(asset['browser_download_url']
-                                for asset in latest['assets'] if 'darwin_arm64.tar.gz' in asset['name'])
+                    return next(
+                        asset["browser_download_url"]
+                        for asset in latest["assets"]
+                        if "darwin_arm64.tar.gz" in asset["name"]
+                    )
             if target == "kubiscan":
                 # Python package, simply get the zipball
-                return latest['zipball_url']
+                return latest["zipball_url"]
 
         try:
-            tool_tmp_dir, repo, tool_full_path = f'/tmp/{tool}/', '', ''
+            tool_tmp_dir, repo, tool_full_path = f"/tmp/{tool}/", "", ""
             try:
                 os.makedirs(tool_tmp_dir, exist_ok=True)
             except PermissionError as e:
@@ -518,14 +607,14 @@ class Kubenumerate:
 
             if tool == "kube-bench":
                 repo = "aquasecurity/kube-bench"
-                tool_full_path = f'{tool_tmp_dir}{tool}.tar.gz'
+                tool_full_path = f"{tool_tmp_dir}{tool}.tar.gz"
 
             if tool == "kubiscan":
                 repo = "cyberark/KubiScan"
-                tool_full_path = f'{tool_tmp_dir}{tool}.zip'
+                tool_full_path = f"{tool_tmp_dir}{tool}.zip"
 
             # Get the latest release URL first
-            response = requests.get(f'https://api.github.com/repos/{repo}/releases/latest')
+            response = requests.get(f"https://api.github.com/repos/{repo}/releases/latest")
             response.raise_for_status()  # Ensure we notice bad responses
             latest_release_data = response.json()
 
@@ -545,11 +634,11 @@ class Kubenumerate:
 
         # Use args if passed
         if self.args.output is not None:
-            self.out_path = f'{os.path.abspath(self.args.output)}/'
-            self.kubectl_path = f'{os.path.abspath(self.args.output)}/kubectl_output/'
+            self.out_path = f"{os.path.abspath(self.args.output)}/"
+            self.kubectl_path = f"{os.path.abspath(self.args.output)}/kubectl_output/"
 
         if self.args.namespace is not None and not "-A":
-            self.namespace = f'-n {self.args.namespace}'
+            self.namespace = f"-n {self.args.namespace}"
 
         if self.args.dry_run:
             self.dry_run = True
@@ -571,11 +660,12 @@ class Kubenumerate:
                 if self.verbosity > 0:
                     print(
                         f'{self.green_text("[+]")} Using passed argument "{self.cyan_text(self.trivy_file)}" file as '
-                        f'input file for Trivy to avoid sending unnecessary requests to the cluster.')
+                        f"input file for Trivy to avoid sending unnecessary requests to the cluster."
+                    )
                 with open(self.trivy_file, "r") as f:
                     self.pods = json.loads(f.read())
         else:
-            self.pods_file = f'{self.kubectl_path}pods.json'
+            self.pods_file = f"{self.kubectl_path}pods.json"
 
         # Check path exists and create it if not
         try:
@@ -585,15 +675,18 @@ class Kubenumerate:
         except OSError:
             if self.verbosity > 0:
                 print(
-                    f'{self.green_text("[+]")} Using existing "{self.cyan_text(self.out_path)}" folder for all output.')
+                    f'{self.green_text("[+]")} Using existing "{self.cyan_text(self.out_path)}" folder for all output.'
+                )
 
         # Do the same for the kubectl output folder
         if not self.dry_run:
             try:
                 os.makedirs(self.kubectl_path)
                 if self.verbosity > 0:
-                    print(f'{self.green_text("[+]")} Directory "{self.cyan_text(self.kubectl_path)}" '
-                          f'created successfully.')
+                    print(
+                        f'{self.green_text("[+]")} Directory "{self.cyan_text(self.kubectl_path)}" '
+                        f"created successfully."
+                    )
             except OSError:
                 if self.verbosity > 0:
                     print(f'Using existing "{self.cyan_text(self.kubectl_path)}" folder for all kubectl output.')
@@ -607,22 +700,24 @@ class Kubenumerate:
                 self.kubeconfig_path = self.args.kubeconfig
 
             # OS-agnostic way of checking the home dir for .kube/config
-            if self.kubeconfig_path is None or self.kubeconfig_path == '':
+            if self.kubeconfig_path is None or self.kubeconfig_path == "":
                 common_kubeconfig_location = f"{Path.home()}/.kube/config"
                 if os.path.isfile(common_kubeconfig_location):
                     self.kubeconfig_path = common_kubeconfig_location
 
             try:
-                with open(self.kubeconfig_path, 'r') as kubeconfig_file:
+                with open(self.kubeconfig_path, "r") as kubeconfig_file:
                     kubeconfig = yaml.safe_load(kubeconfig_file)
 
-                current_context = kubeconfig.get('current-context')
+                current_context = kubeconfig.get("current-context")
                 print(
                     f'{self.green_text("[+]")} {self.yellow_text("Kubeconfig")} file successfully loaded from '
-                    f'"{self.yellow_text(f"{self.kubeconfig_path}")}".')
+                    f'"{self.yellow_text(f"{self.kubeconfig_path}")}".'
+                )
                 print(
                     f'{self.green_text("[+]")} Current context to be scanned: '
-                    f'"{self.yellow_text(f"{current_context}")}".')
+                    f'"{self.yellow_text(f"{current_context}")}".'
+                )
 
             except Exception as e:
                 print(f'{self.red_text("[-]")} Error loading kubeconfig file: {e}')
@@ -654,11 +749,15 @@ class Kubenumerate:
         self.kube_bench_file = f"{self.out_path}kube_bench_output.json"
         if os.path.exists(self.kube_bench_file):
             if self.verbosity > 0:
-                print(f'{self.green_text("[+]")} Using existing "{self.cyan_text(self.kube_bench_file)}" kube-bench '
-                      f'file as input file to avoid sending unnecessary requests to the client\'s cluster.')
-                print(f'{self.yellow_text("[!]")} If you want a fresh {self.cyan_text("kube-bench")} output file, run '
-                      f'the following command and then run this program again:\n\t'
-                      f'{self.yellow_text(f"rm {self.kube_bench_file}")}')
+                print(
+                    f'{self.green_text("[+]")} Using existing "{self.cyan_text(self.kube_bench_file)}" kube-bench '
+                    f"file as input file to avoid sending unnecessary requests to the client's cluster."
+                )
+                print(
+                    f'{self.yellow_text("[!]")} If you want a fresh {self.cyan_text("kube-bench")} output file, run '
+                    f"the following command and then run this program again:\n\t"
+                    f'{self.yellow_text(f"rm {self.kube_bench_file}")}'
+                )
             return
 
         # Run kube-bench
@@ -689,7 +788,8 @@ class Kubenumerate:
             if self.verbosity > 0:
                 print(
                     f'{self.green_text("[+]")} Using "{self.cyan_text(self.pods_file)}" file as input file for '
-                    f'{self.cyan_text("Trivy")}, please wait...')
+                    f'{self.cyan_text("Trivy")}, please wait...'
+                )
             with open(self.pods_file, "r") as f:
                 self.pods = json.loads(f.read())
 
@@ -698,19 +798,18 @@ class Kubenumerate:
 
         # Check if kubeconfig was passed and adjust commands to include the flag
         if self.args.kubeconfig is not None:
-            self.kubectl_bin = f'{self.kubectl_bin} --kubeconfig={self.args.kubeconfig}'
+            self.kubectl_bin = f"{self.kubectl_bin} --kubeconfig={self.args.kubeconfig}"
 
         # Get cluster version first
-        kubectl_cluster_version_command = f'{self.kubectl_bin} version'
+        kubectl_cluster_version_command = f"{self.kubectl_bin} version"
         try:
             cluster_version_process = subprocess.Popen(
-                kubectl_cluster_version_command.split(" "),
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE)
+                kubectl_cluster_version_command.split(" "), stdout=subprocess.PIPE, stderr=subprocess.PIPE
+            )
             cluster_version_stdout, cluster_version_stderr = cluster_version_process.communicate()
 
             self.cluster_version = self.extract_version(cluster_version_stdout)
-            with open(f'{self.kubectl_path}cluster_version.txt', "w") as f:
+            with open(f"{self.kubectl_path}cluster_version.txt", "w") as f:
                 f.write(self.cluster_version)
 
         except Exception as e:
@@ -718,8 +817,8 @@ class Kubenumerate:
             print(f'{self.red_text("[-]")} Error detected while launching `kubectl version`: {e}')
 
         # Get all yaml and json about valid resources
-        kubectl_json_file = f'{self.kubectl_path}all_output.json'
-        kubectl_yaml_file = f'{self.kubectl_path}all_output.yaml'
+        kubectl_json_file = f"{self.kubectl_path}all_output.json"
+        kubectl_yaml_file = f"{self.kubectl_path}all_output.yaml"
 
         if not os.path.exists(kubectl_json_file):
             Path.touch(kubectl_json_file, 0o644)
@@ -728,16 +827,19 @@ class Kubenumerate:
         if self.verbosity > 0:
             print(
                 f'{self.cyan_text("[*]")} Gathering output from every resource {self.cyan_text(f"kubectl")} has '
-                f'permission to get. Please wait...')
+                f"permission to get. Please wait..."
+            )
 
         awk_command = "awk '// {print $1}'"
-        command = f'{self.kubectl_bin} api-resources --no-headers | {awk_command} | sort -u'
+        command = f"{self.kubectl_bin} api-resources --no-headers | {awk_command} | sort -u"
         resources = subprocess.check_output(command, shell=True).decode().split("\n")[:-1]
         total_resources = len(resources)
 
         if total_resources == 0:
-            print(f'{self.red_text("[-]")} It was not possible to get number of resources from kubectl. Are you '
-                  f'connected to the cluster?')
+            print(
+                f'{self.red_text("[-]")} It was not possible to get number of resources from kubectl. Are you '
+                f"connected to the cluster?"
+            )
             exit(50)
 
         # Start progress bar
@@ -748,72 +850,72 @@ class Kubenumerate:
             for i, resource in enumerate(resources):
                 self.show_status_bar(i + 1, "resources", total_resources, start=start)
                 # Skip if it already exists
-                if os.path.exists(f'{self.kubectl_path}{resource}.json'):
+                if os.path.exists(f"{self.kubectl_path}{resource}.json"):
                     if self.verbosity > 0:
                         print(
                             f'{self.yellow_text("[!]")} "{self.kubectl_path}{resource}.json" already exists in the '
-                            f'system. Skipping...')
+                            f"system. Skipping..."
+                        )
                     continue
                 try:
-                    Path.touch(f'{self.kubectl_path}{resource}.json', 0o644)
-                    Path.touch(f'{self.kubectl_path}{resource}.yaml', 0o644)
+                    Path.touch(f"{self.kubectl_path}{resource}.json", 0o644)
+                    Path.touch(f"{self.kubectl_path}{resource}.yaml", 0o644)
 
                     command = f"{self.kubectl_bin} get {resource} {self.namespace} -o json".split(" ")
-                    process = subprocess.Popen(
-                        command,
-                        stdout=subprocess.PIPE,
-                        stderr=subprocess.PIPE)
+                    process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                     stdout, stderr = process.communicate()
                 except Exception as e:
                     # If forbidden, don't try to do it with yaml
                     print(
                         f'{self.red_text("[-]")} Error detected while launching `kubectl get '
-                        f'{resource} {self.namespace} -o json`: {e}')
+                        f"{resource} {self.namespace} -o json`: {e}"
+                    )
                     continue
 
                 # Save the output to its own file
                 contents = json.loads(stdout.decode("utf-8"))
                 if not contents["items"]:
                     if self.verbosity > 1:
-                        print(f'{self.cyan_text("[*]")} DEBUG (DEV branch): not saving '
-                              f'file {resource} because it came up empty')
+                        print(
+                            f'{self.cyan_text("[*]")} DEBUG (DEV branch): not saving '
+                            f"file {resource} because it came up empty"
+                        )
                     skipped += 1
                     continue
 
-                Path.touch(f'{self.kubectl_path}{resource}.json', 0o644)
-                with open(f'{self.kubectl_path}{resource}.json', "w") as f:
+                Path.touch(f"{self.kubectl_path}{resource}.json", 0o644)
+                with open(f"{self.kubectl_path}{resource}.json", "w") as f:
                     # Check to avoid creating empty list file
                     contents_str = json.dumps(contents, indent=4)
                     f.write(contents_str)
 
                 # ... And if still alive, append to the catch-all file for global queries
-                with open(kubectl_json_file, '+a') as f:
+                with open(kubectl_json_file, "+a") as f:
                     f.write(contents_str)
 
                 # ... And repeat with yaml
                 command = f"kubectl get {resource} {self.namespace} -o yaml"
-                process = subprocess.Popen(
-                    command.split(" "),
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE)
+                process = subprocess.Popen(command.split(" "), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                 stdout, stderr = process.communicate()
 
                 # Save the output to its own yaml file
-                Path.touch(f'{self.kubectl_path}{resource}.yaml', 0o644)
-                with open(f'{self.kubectl_path}{resource}.yaml', "w") as f:
+                Path.touch(f"{self.kubectl_path}{resource}.yaml", 0o644)
+                with open(f"{self.kubectl_path}{resource}.yaml", "w") as f:
                     f.write(stdout.decode("utf-8"))
 
                 # And append to the catch-all file for global queries
-                with open(kubectl_yaml_file, '+a') as f:
+                with open(kubectl_yaml_file, "+a") as f:
                     f.write(stdout.decode("utf-8"))
 
         except ZeroDivisionError:
             print(f'{self.red_text("[-]")} Error: No resources were found. Are you connected to the cluster?\n')
 
         print("\n", flush=True, file=sys.stdout)
-        print(f'{self.green_text("[+]")} Successfully extracted '
-              f'{self.green_text(total_resources - skipped)}/{self.yellow_text(total_resources)} resources (the other '
-              f'{self.yellow_text(skipped)} came up empty so were not collected).')
+        print(
+            f'{self.green_text("[+]")} Successfully extracted '
+            f"{self.green_text(total_resources - skipped)}/{self.yellow_text(total_resources)} resources (the other "
+            f"{self.yellow_text(skipped)} came up empty so were not collected)."
+        )
 
     def launch_gatherer_tools(self):
         """Launch kube-bench and trivy (kubeaudit removed)"""
@@ -846,12 +948,17 @@ class Kubenumerate:
 
         # Abort immediately if python 3.11 is not being used
         self.py_bin = "python3" if self.py_bin is None else self.py_bin  # Triple check python is valid
-        python_version = subprocess.run(f"{self.py_bin} --version".split(" "), check=True, capture_output=True,
-                                        text=True).stdout.split(" ")[1].strip().split(".")
-        if float(f'{python_version[0]}.{python_version[1]}') < 3.11:
+        python_version = (
+            subprocess.run(f"{self.py_bin} --version".split(" "), check=True, capture_output=True, text=True)
+            .stdout.split(" ")[1]
+            .strip()
+            .split(".")
+        )
+        if float(f"{python_version[0]}.{python_version[1]}") < 3.11:
             print(
                 f'{self.red_text("[-]")} {self.cyan_text("Python")} version < 3.11 detected. This is a version known '
-                f'to cause issues. Please update {self.cyan_text("Python")} and try again.')
+                f'to cause issues. Please update {self.cyan_text("Python")} and try again.'
+            )
             sys.exit(1)
 
         # Parse args
@@ -865,16 +972,19 @@ class Kubenumerate:
             print(f'{self.cyan_text("[*]")} ----- Cheatsheet flag detected -----')
             print(
                 f"\nIf your testing host doesn't allow having installed other software than kubeaudit, you can extract "
-                f"all you need for {self.cyan_text('Kubenumerate')} to work with the following one-liner:")
+                f"all you need for {self.cyan_text('Kubenumerate')} to work with the following one-liner:"
+            )
             print(
                 f'{self.cyan_text("kubectl")} get po {self.green_text("-A -o")} json {self.cyan_text(">")}'
                 f'{self.yellow_text("pods.json")}; {self.cyan_text("echo")} "Done"\n\n'
                 f'Then from your host:\n{self.cyan_text("scp")} {self.green_text("-i")} '
                 f'{self.yellow_text("<rsa_id> <remote_user>")}@{self.yellow_text("<10.10.10.10>")}:'
-                f'{self.yellow_text("<folder>")}*.json .\n')
+                f'{self.yellow_text("<folder>")}*.json .\n'
+            )
             print(
                 f'And finally use kubenumerate with the data you just extracted:\n{self.cyan_text("kubenumerate")} '
-                f'{self.green_text("--dry-run --trivy-file")} {self.yellow_text("pods.json")}')
+                f'{self.green_text("--dry-run --trivy-file")} {self.yellow_text("pods.json")}'
+            )
             sys.exit(0)
 
         # Make sure all necessary software is installed
@@ -892,14 +1002,13 @@ class Kubenumerate:
 
         # Write to Excel file all findings
         if self.verbosity > 0:
-            print(
-                f'\n{self.cyan_text("[*]")} ----- Parsing kube-bench and trivy output, please wait... -----')
+            print(f'\n{self.cyan_text("[*]")} ----- Parsing kube-bench and trivy output, please wait... -----')
         # Check versions difference
         self.kubernetes_version_check()
         # Generate local kubeaudit-equivalent findings from kubectl output
         kubeaudit_df = self.generate_kubeaudit_equivalent_df_from_kubectl()
         with open(self.kube_bench_file, "r") as kube_bench_f:
-            with pd.ExcelWriter(self.excel_file, engine='xlsxwriter', mode="w") as writer:
+            with pd.ExcelWriter(self.excel_file, engine="xlsxwriter", mode="w") as writer:
                 # Run all Kubeaudit-equivalent methods
                 self.apparmor(kubeaudit_df, writer)
                 self.asat(kubeaudit_df, writer)
@@ -914,11 +1023,13 @@ class Kubenumerate:
                 self.root_fs(kubeaudit_df, writer)
                 self.seccomp(kubeaudit_df, writer)
                 if self.verbosity > 0:
-                    print(f'{self.green_text("[+]")} {self.cyan_text("Kubeaudit-equivalent checks")} successfully parsed.')
+                    print(
+                        f'{self.green_text("[+]")} {self.cyan_text("Kubeaudit-equivalent checks")} successfully parsed.'
+                    )
                 # Run Kube-bench methods
                 if not self.dry_run:
                     kube_bench_dict = json.load(kube_bench_f)
-                    kube_bench_df = pd.json_normalize(kube_bench_dict, record_path=['Controls', 'tests', 'results'])
+                    kube_bench_df = pd.json_normalize(kube_bench_dict, record_path=["Controls", "tests", "results"])
                     self.cis(kube_bench_df, writer)
                     if self.verbosity > 0:
                         print(f'{self.green_text("[+]")} {self.cyan_text("Kube-bench")} successfully parsed.')
@@ -935,16 +1046,17 @@ class Kubenumerate:
 
         # Run ExtensiveRoleCheck.py
         if self.verbosity > 0:
-            print(
-                f'\n{self.cyan_text("[*]")} ----- Running RBAC checks, please wait... -----')
+            print(f'\n{self.cyan_text("[*]")} ----- Running RBAC checks, please wait... -----')
         self.check_roles()
         # Finish by raising issues to the terminal
         self.raise_issues()
 
     def check_roles(self):
         if self.dry_run:
-            print(f'{self.cyan_text("[*]")} --dry-run flag detected. Using current directory to fetch json files'
-                  f'needed to run ExtensiveRoleCheck.py.')
+            print(
+                f'{self.cyan_text("[*]")} --dry-run flag detected. Using current directory to fetch json files'
+                f"needed to run ExtensiveRoleCheck.py."
+            )
             self.run_extensive_role_check()
             return
         self.run_kubiscan()
@@ -952,39 +1064,47 @@ class Kubenumerate:
     def run_extensive_role_check(self):
         """Run ExtensiveRoleCheck if not connected to the cluster"""
 
-        role_check_out_path = f'{self.out_path}ExtensiveRoleCheck_output.txt'
-        extensive_role_check_file_path = 'ExtensiveRoleCheck.py'
+        role_check_out_path = f"{self.out_path}ExtensiveRoleCheck_output.txt"
+        extensive_role_check_file_path = "ExtensiveRoleCheck.py"
         try:
-            command = (f"{self.py_bin} {extensive_role_check_file_path}"
-                       f" --clusterRole clusterroles.json"
-                       f" --role roles.json"
-                       f" --rolebindings rolebindings.json"
-                       f" --clusterrolebindings clusterrolebindings.json"
-                       f" --pods pods.json").split(" ")
+            command = (
+                f"{self.py_bin} {extensive_role_check_file_path}"
+                f" --clusterRole clusterroles.json"
+                f" --role roles.json"
+                f" --rolebindings rolebindings.json"
+                f" --clusterrolebindings clusterrolebindings.json"
+                f" --pods pods.json"
+            ).split(" ")
             process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             stdout, stderr = process.communicate()
 
             if len(stderr) > 0:
-                print(f'{self.red_text("[-]")} Error while running {self.cyan_text("ExtensiveRoleCheck.py")}: '
-                      f'{stderr.decode("utf-8")}')
-                print(f'{self.cyan_text("[*]")} Ensure all files that the script reads are sane. '
-                      f'Perhaps your role does not have enough permissions to get Roles, RoleBindings, ClusterRoles, '
-                      f'ClusterRoleBindings, or Pods')
+                print(
+                    f'{self.red_text("[-]")} Error while running {self.cyan_text("ExtensiveRoleCheck.py")}: '
+                    f'{stderr.decode("utf-8")}'
+                )
+                print(
+                    f'{self.cyan_text("[*]")} Ensure all files that the script reads are sane. '
+                    f"Perhaps your role does not have enough permissions to get Roles, RoleBindings, ClusterRoles, "
+                    f"ClusterRoleBindings, or Pods"
+                )
 
             # Save the output to its own file
             Path.touch(role_check_out_path, 0o644)
-            with open(f'{role_check_out_path}', "w") as f:
+            with open(f"{role_check_out_path}", "w") as f:
                 f.write(stderr.decode("utf-8"))
                 f.write(stdout.decode("utf-8"))
-                print(f'{self.green_text("[+]")} Done! {self.cyan_text("ExtensiveRoleCheck.py")} output successfully '
-                      f'saved to {role_check_out_path}')
+                print(
+                    f'{self.green_text("[+]")} Done! {self.cyan_text("ExtensiveRoleCheck.py")} output successfully '
+                    f"saved to {role_check_out_path}"
+                )
         except Exception as e:
             print(f'{self.red_text("[-]")} Error detected while launching `python3 ExtensiveRoleCheck.py`: {e}')
 
     def run_kubiscan(self):
         """Run KubiScan if connected to the cluster"""
         if self.args.kubeconfig is not None:
-            self.kubiscan_py = f'{self.kubiscan_py} -co {self.args.kubeconfig}'
+            self.kubiscan_py = f"{self.kubiscan_py} -co {self.args.kubeconfig}"
 
         try:
             command = f"{self.py_bin} {self.kubiscan_py} -a".split(" ")
@@ -996,29 +1116,39 @@ class Kubenumerate:
             with open(f"{self.out_path}kubiscan.out", "w") as output_kubiscan_file:
                 output_kubiscan_file.write(stdout)
             if self.verbosity > 0:
-                print(f'{self.green_text("[+]")} Done. {self.cyan_text("KubiScan")} output saved to '
-                      f'{self.yellow_text(self.out_path + "kubiscan.out")}')
+                print(
+                    f'{self.green_text("[+]")} Done. {self.cyan_text("KubiScan")} output saved to '
+                    f'{self.yellow_text(self.out_path + "kubiscan.out")}'
+                )
         except Exception as e:
             print(f'{self.red_text("[-]")} Error while running {self.cyan_text("Kubiscan")}: {e}')
 
     def kubernetes_version_check(self):
         """Check whether the cluster's version is outdated"""
-        print(f"{self.cyan_text('[*]')} Determining latest version of {self.cyan_text('K8s')} from "
-              f"{self.cyan_text('GitHub')}'s API...")
+        print(
+            f"{self.cyan_text('[*]')} Determining latest version of {self.cyan_text('K8s')} from "
+            f"{self.cyan_text('GitHub')}'s API..."
+        )
         if not self.cluster_version:
-            print(f'{self.red_text("[-]")} Skipping version check as {self.cyan_text("kubectl")} could not fetch '
-                  f'cluster\'s version')
+            print(
+                f'{self.red_text("[-]")} Skipping version check as {self.cyan_text("kubectl")} could not fetch '
+                f"cluster's version"
+            )
             return
 
         current_latest = self.fetch_latest_kubernetes_version()
         if current_latest is None:
-            print(f'{self.red_text("[-]")} This will now default to a hard-coded version ({self.kube_version}). '
-                  f'Although the developer tries to maintain {self.cyan_text("Kubenumerate")} updated, you should '
-                  f'ensure this version is up-to-date, otherwise you might flag a false positive.')
+            print(
+                f'{self.red_text("[-]")} This will now default to a hard-coded version ({self.kube_version}). '
+                f'Although the developer tries to maintain {self.cyan_text("Kubenumerate")} updated, you should '
+                f"ensure this version is up-to-date, otherwise you might flag a false positive."
+            )
         else:
-            print(f'{self.green_text("[+]")} Successfully queried latest version of {self.cyan_text("K8s")}: '
-                  f'{self.yellow_text(f"{self.kube_version}")}. Comparing against cluster\'s version '
-                  f'{self.yellow_text("v" + self.cluster_version)}.')
+            print(
+                f'{self.green_text("[+]")} Successfully queried latest version of {self.cyan_text("K8s")}: '
+                f'{self.yellow_text(f"{self.kube_version}")}. Comparing against cluster\'s version '
+                f'{self.yellow_text("v" + self.cluster_version)}.'
+            )
             self.kube_version = current_latest
 
         if Version(self.cluster_version) < Version(self.kube_version):
@@ -1029,9 +1159,9 @@ class Kubenumerate:
         # Command for dev purposes:
         # curl -s https://api.github.com/repos/kubernetes/kubernetes/releases/latest | jq -r .tag_name | sed 's/v//'
         try:
-            response = requests.get('https://api.github.com/repos/kubernetes/kubernetes/releases/latest')
+            response = requests.get("https://api.github.com/repos/kubernetes/kubernetes/releases/latest")
             data = response.json()
-            tag_name = data['tag_name'].lstrip("v")
+            tag_name = data["tag_name"].lstrip("v")
         except Exception as e:
             print(f'{self.red_text("[-]")} Error while running curl trying to fetch kubernetes last version: {e}')
             return None
@@ -1047,7 +1177,7 @@ class Kubenumerate:
             if "Server Version" in line:
                 server_version = line
 
-        pattern = r'v?(\d+\.\d+\.\d+)'
+        pattern = r"v?(\d+\.\d+\.\d+)"
         match = re.search(pattern, server_version)
         if match:
             return match.group(1)
@@ -1058,19 +1188,19 @@ class Kubenumerate:
     # Colour the terminal!
     @staticmethod
     def red_text(text):
-        return f'\033[91m{text}\033[0m'
+        return f"\033[91m{text}\033[0m"
 
     @staticmethod
     def cyan_text(text):
-        return f'\033[96m{text}\033[0m'
+        return f"\033[96m{text}\033[0m"
 
     @staticmethod
     def green_text(text):
-        return f'\033[92m{text}\033[0m'
+        return f"\033[92m{text}\033[0m"
 
     @staticmethod
     def yellow_text(text):
-        return f'\033[93m{text}\033[0m'
+        return f"\033[93m{text}\033[0m"
 
     def get_kubebench_output(self):
         """Run 'kube-bench run --targets=node,policies' command and return pointer to output file location"""
@@ -1100,8 +1230,10 @@ class Kubenumerate:
                     output_kube_bench_file.write(process.stdout)
 
                 if self.verbosity > 0:
-                    print(f'{self.green_text("[+]")} Done. Kube-bench output saved to '
-                          f'{self.cyan_text(self.kube_bench_file)}')
+                    print(
+                        f'{self.green_text("[+]")} Done. Kube-bench output saved to '
+                        f"{self.cyan_text(self.kube_bench_file)}"
+                    )
                     return
 
             except subprocess.CalledProcessError:
@@ -1115,24 +1247,23 @@ class Kubenumerate:
         """Parse the kube-bench JSON file to generate a sheet containing the CIS benchmarks that failed and warned"""
         try:
             # Fail
-            df_failed_cis = df[df['status'] == 'FAIL']
-            df_failed_cis = df_failed_cis[[
-                "status", "test_number", "test_desc", "audit", "AuditConfig", "reason", "remediation"]]
-            df_failed_cis = df_failed_cis.rename(columns={
-                "status": "Status",
-                "test_number": "Test Number",
-                "test_desc": "Test Description",
-                "audit": "Audit",
-                "AuditConfig": "Audit Config",
-                "reason": "Reason",
-                "remediation": "Remediation"
-            })
+            df_failed_cis = df[df["status"] == "FAIL"]
+            df_failed_cis = df_failed_cis[
+                ["status", "test_number", "test_desc", "audit", "AuditConfig", "reason", "remediation"]
+            ]
+            df_failed_cis = df_failed_cis.rename(
+                columns={
+                    "status": "Status",
+                    "test_number": "Test Number",
+                    "test_desc": "Test Description",
+                    "audit": "Audit",
+                    "AuditConfig": "Audit Config",
+                    "reason": "Reason",
+                    "remediation": "Remediation",
+                }
+            )
             self.colour_cells_and_save_to_excel(
-                "CIS Benchmarks - Fail",
-                "Failed CIS Benchmarks",
-                "CIS Benchmarks - Fail",
-                df_failed_cis,
-                writer
+                "CIS Benchmarks - Fail", "Failed CIS Benchmarks", "CIS Benchmarks - Fail", df_failed_cis, writer
             )
             self.cis_detected = True
         except KeyError:
@@ -1141,24 +1272,23 @@ class Kubenumerate:
 
         try:
             # Warn
-            df_warn_cis = df[df['status'] == 'WARN']
-            df_warn_cis = df_warn_cis[[
-                "status", "test_number", "test_desc", "audit", "AuditConfig", "reason", "remediation"]]
-            df_warn_cis = df_warn_cis.rename(columns={
-                "status": "Status",
-                "test_number": "Test Number",
-                "test_desc": "Test Description",
-                "audit": "Audit",
-                "AuditConfig": "Audit Config",
-                "reason": "Reason",
-                "remediation": "Remediation"
-            })
+            df_warn_cis = df[df["status"] == "WARN"]
+            df_warn_cis = df_warn_cis[
+                ["status", "test_number", "test_desc", "audit", "AuditConfig", "reason", "remediation"]
+            ]
+            df_warn_cis = df_warn_cis.rename(
+                columns={
+                    "status": "Status",
+                    "test_number": "Test Number",
+                    "test_desc": "Test Description",
+                    "audit": "Audit",
+                    "AuditConfig": "Audit Config",
+                    "reason": "Reason",
+                    "remediation": "Remediation",
+                }
+            )
             self.colour_cells_and_save_to_excel(
-                "CIS Benchmarks - Warn",
-                "Warn CIS Benchmarks",
-                "CIS Benchmarks - Warn",
-                df_warn_cis,
-                writer
+                "CIS Benchmarks - Warn", "Warn CIS Benchmarks", "CIS Benchmarks - Warn", df_warn_cis, writer
             )
             self.cis_detected = True
         except KeyError:
@@ -1167,24 +1297,23 @@ class Kubenumerate:
 
         try:
             # Pass
-            df_pass_cis = df[df['status'] == 'PASS']
-            df_pass_cis = df_pass_cis[[
-                "status", "test_number", "test_desc", "audit", "AuditConfig", "reason", "remediation"]]
-            df_pass_cis = df_pass_cis.rename(columns={
-                "status": "Status",
-                "test_number": "Test Number",
-                "test_desc": "Test Description",
-                "audit": "Audit",
-                "AuditConfig": "Audit Config",
-                "reason": "Reason",
-                "remediation": "Remediation"
-            })
+            df_pass_cis = df[df["status"] == "PASS"]
+            df_pass_cis = df_pass_cis[
+                ["status", "test_number", "test_desc", "audit", "AuditConfig", "reason", "remediation"]
+            ]
+            df_pass_cis = df_pass_cis.rename(
+                columns={
+                    "status": "Status",
+                    "test_number": "Test Number",
+                    "test_desc": "Test Description",
+                    "audit": "Audit",
+                    "AuditConfig": "Audit Config",
+                    "reason": "Reason",
+                    "remediation": "Remediation",
+                }
+            )
             self.colour_cells_and_save_to_excel(
-                "CIS benchmarks - Pass",
-                "Passed CIS Benchmarks",
-                "CIS benchmarks - Pass",
-                df_pass_cis,
-                writer
+                "CIS benchmarks - Pass", "Passed CIS Benchmarks", "CIS benchmarks - Pass", df_pass_cis, writer
             )
             self.cis_detected = True
 
@@ -1196,17 +1325,20 @@ class Kubenumerate:
         """AppArmor annotation disabled and missing"""
         try:
             # Apparmor disabled
-            df_apparmor_disabled = df[df['AuditResultName'] == 'AppArmorDisabled']
-            df_apparmor_disabled = df_apparmor_disabled[[
-                "ResourceNamespace", "ResourceKind", "ResourceName", "Container", "AnnotationValue", "msg"]]
-            df_apparmor_disabled = df_apparmor_disabled.rename(columns={
-                "ResourceNamespace": "Resource Namespace",
-                "ResourceKind": "Resource Kind",
-                "ResourceName": "Resource Name",
-                "Container": "Affected Container",
-                "AnnotationValue": "Annotation Value",
-                "msg": "Recommendation",
-            })
+            df_apparmor_disabled = df[df["AuditResultName"] == "AppArmorDisabled"]
+            df_apparmor_disabled = df_apparmor_disabled[
+                ["ResourceNamespace", "ResourceKind", "ResourceName", "Container", "AnnotationValue", "msg"]
+            ]
+            df_apparmor_disabled = df_apparmor_disabled.rename(
+                columns={
+                    "ResourceNamespace": "Resource Namespace",
+                    "ResourceKind": "Resource Kind",
+                    "ResourceName": "Resource Name",
+                    "Container": "Affected Container",
+                    "AnnotationValue": "Annotation Value",
+                    "msg": "Recommendation",
+                }
+            )
             self.colour_cells_and_save_to_excel(
                 "AppArmor Annotation - Disabled",
                 "AppArmor is a Mandatory Access Control (MAC) system used by Linux. "
@@ -1214,7 +1346,7 @@ class Kubenumerate:
                 " annotation and setting its value to either runtime/default or a profile (localhost/[profile name]).",
                 "Apparmor - Disabled",
                 df_apparmor_disabled,
-                writer
+                writer,
             )
             self.hardened = False
         except KeyError:
@@ -1223,17 +1355,20 @@ class Kubenumerate:
 
         try:
             # Apparmor annotation missing
-            df_apparmor_missing = df[df['AuditResultName'] == 'AppArmorAnnotationMissing']
-            df_apparmor_missing = df_apparmor_missing[[
-                "ResourceNamespace", "ResourceKind", "ResourceName", "Container", "MissingAnnotation", "msg"]]
-            df_apparmor_missing = df_apparmor_missing.rename(columns={
-                "ResourceNamespace": "Resource Namespace",
-                "ResourceKind": "Resource Kind",
-                "ResourceName": "Resource Name",
-                "Container": "Affected Container",
-                "MissingAnnotation": "Missing Annotation",
-                "msg": "Recommendation",
-            })
+            df_apparmor_missing = df[df["AuditResultName"] == "AppArmorAnnotationMissing"]
+            df_apparmor_missing = df_apparmor_missing[
+                ["ResourceNamespace", "ResourceKind", "ResourceName", "Container", "MissingAnnotation", "msg"]
+            ]
+            df_apparmor_missing = df_apparmor_missing.rename(
+                columns={
+                    "ResourceNamespace": "Resource Namespace",
+                    "ResourceKind": "Resource Kind",
+                    "ResourceName": "Resource Name",
+                    "Container": "Affected Container",
+                    "MissingAnnotation": "Missing Annotation",
+                    "msg": "Recommendation",
+                }
+            )
             self.colour_cells_and_save_to_excel(
                 "AppArmor - Missing Annotation",
                 "AppArmor is a Mandatory Access Control (MAC) system used by Linux. "
@@ -1241,7 +1376,7 @@ class Kubenumerate:
                 " annotation and setting its value to either runtime/default or a profile (localhost/[profile name]).",
                 "Apparmor - Missing",
                 df_apparmor_missing,
-                writer
+                writer,
             )
             self.hardened = False
         except KeyError:
@@ -1251,15 +1386,16 @@ class Kubenumerate:
     def asat(self, df, writer):
         """Automount ServiceAccount Token True And Default SA"""
         try:
-            df_automount_sa = df[df['AuditResultName'] == 'AutomountServiceAccountTokenTrueAndDefaultSA']
-            df_automount_sa = df_automount_sa[[
-                "ResourceNamespace", "ResourceKind", "ResourceName", "msg"]]
-            df_automount_sa = df_automount_sa.rename(columns={
-                "ResourceNamespace": "Resource Namespace",
-                "ResourceKind": "Resource Kind",
-                "ResourceName": "Resource Name",
-                "msg": "Recommendation",
-            })
+            df_automount_sa = df[df["AuditResultName"] == "AutomountServiceAccountTokenTrueAndDefaultSA"]
+            df_automount_sa = df_automount_sa[["ResourceNamespace", "ResourceKind", "ResourceName", "msg"]]
+            df_automount_sa = df_automount_sa.rename(
+                columns={
+                    "ResourceNamespace": "Resource Namespace",
+                    "ResourceKind": "Resource Kind",
+                    "ResourceName": "Resource Name",
+                    "msg": "Recommendation",
+                }
+            )
             self.colour_cells_and_save_to_excel(
                 "Automount ServiceAccount Token True And Default ServiceAccount",
                 "Automounting a default service account would allow any compromised pod to run API commands "
@@ -1267,7 +1403,7 @@ class Kubenumerate:
                 " permissions should be used.",
                 "Automount SA",
                 df_automount_sa,
-                writer
+                writer,
             )
             self.automount = True
         except KeyError:
@@ -1278,23 +1414,26 @@ class Kubenumerate:
         """Capabilities"""
         try:
             # Missing Caps or Security Context
-            df_missing_capabilities_or_seccontext = df[df['AuditResultName'] == 'CapabilityOrSecurityContextMissing']
-            df_missing_capabilities_or_seccontext = df_missing_capabilities_or_seccontext[[
-                "ResourceNamespace", "ResourceKind", "ResourceName", "Container", "msg"]]
-            df_missing_capabilities_or_seccontext = df_missing_capabilities_or_seccontext.rename(columns={
-                "ResourceNamespace": "Resource Namespace",
-                "ResourceKind": "Resource Kind",
-                "ResourceName": "Resource Name",
-                "Container": "Affected Container",
-                "msg": "Recommendation",
-            })
+            df_missing_capabilities_or_seccontext = df[df["AuditResultName"] == "CapabilityOrSecurityContextMissing"]
+            df_missing_capabilities_or_seccontext = df_missing_capabilities_or_seccontext[
+                ["ResourceNamespace", "ResourceKind", "ResourceName", "Container", "msg"]
+            ]
+            df_missing_capabilities_or_seccontext = df_missing_capabilities_or_seccontext.rename(
+                columns={
+                    "ResourceNamespace": "Resource Namespace",
+                    "ResourceKind": "Resource Kind",
+                    "ResourceName": "Resource Name",
+                    "Container": "Affected Container",
+                    "msg": "Recommendation",
+                }
+            )
             self.colour_cells_and_save_to_excel(
                 "Capabilities or Security Context Missing",
                 "Capabilities (specifically, Linux capabilities), are used for permission management in Linux. "
                 "Some capabilities are enabled by default.",
                 "Capabilities - Missing",
                 df_missing_capabilities_or_seccontext,
-                writer
+                writer,
             )
             self.hardened = False
         except KeyError:
@@ -1303,24 +1442,27 @@ class Kubenumerate:
 
         try:
             # Added Caps
-            df_added_capabilities = df[df['AuditResultName'] == 'CapabilityAdded']
-            df_added_capabilities = df_added_capabilities[[
-                "ResourceNamespace", "ResourceKind", "ResourceName", "Container", "Metadata", "msg"]]
-            df_added_capabilities = df_added_capabilities.rename(columns={
-                "ResourceNamespace": "Resource Namespace",
-                "ResourceKind": "Resource Kind",
-                "ResourceName": "Resource Name",
-                "Container": "Affected Container",
-                "Metadata": "Metadata",
-                "msg": "Recommendation",
-            })
+            df_added_capabilities = df[df["AuditResultName"] == "CapabilityAdded"]
+            df_added_capabilities = df_added_capabilities[
+                ["ResourceNamespace", "ResourceKind", "ResourceName", "Container", "Metadata", "msg"]
+            ]
+            df_added_capabilities = df_added_capabilities.rename(
+                columns={
+                    "ResourceNamespace": "Resource Namespace",
+                    "ResourceKind": "Resource Kind",
+                    "ResourceName": "Resource Name",
+                    "Container": "Affected Container",
+                    "Metadata": "Metadata",
+                    "msg": "Recommendation",
+                }
+            )
             self.colour_cells_and_save_to_excel(
                 "Capabilities Added that may not be necessary",
                 "Capabilities (specifically, Linux capabilities), are used for permission management in Linux. "
                 "Some capabilities are enabled by default.",
                 "Capabilities - Added",
                 df_added_capabilities,
-                writer
+                writer,
             )
             self.hardened = False
         except KeyError:
@@ -1329,17 +1471,19 @@ class Kubenumerate:
 
         try:
             # Capability Should Drop All
-            df_caps_should_drop = df[df['AuditResultName']
-                                     == 'CapabilityShouldDropAll']
-            df_caps_should_drop = df_caps_should_drop[[
-                "ResourceNamespace", "ResourceKind", "ResourceName", "Container", "msg"]]
-            df_caps_should_drop = df_caps_should_drop.rename(columns={
-                "ResourceNamespace": "Resource Namespace",
-                "ResourceKind": "Resource Kind",
-                "ResourceName": "Resource Name",
-                "Container": "Affected Container",
-                "msg": "Recommendation",
-            })
+            df_caps_should_drop = df[df["AuditResultName"] == "CapabilityShouldDropAll"]
+            df_caps_should_drop = df_caps_should_drop[
+                ["ResourceNamespace", "ResourceKind", "ResourceName", "Container", "msg"]
+            ]
+            df_caps_should_drop = df_caps_should_drop.rename(
+                columns={
+                    "ResourceNamespace": "Resource Namespace",
+                    "ResourceKind": "Resource Kind",
+                    "ResourceName": "Resource Name",
+                    "Container": "Affected Container",
+                    "msg": "Recommendation",
+                }
+            )
             self.colour_cells_and_save_to_excel(
                 "Capabilities should drop all",
                 "Capabilities (specifically, Linux capabilities), are used for permission management in Linux. "
@@ -1348,7 +1492,7 @@ class Kubenumerate:
                 "capabilities should be added",
                 "Capabilities - No Drop All",
                 df_caps_should_drop,
-                writer
+                writer,
             )
             self.hardened = False
         except KeyError:
@@ -1358,35 +1502,41 @@ class Kubenumerate:
     def dep_api(self, df, writer):
         """Deprecated API used"""
         try:
-            df_dep_api_used = df[df['AuditResultName'] == 'DeprecatedAPIUsed']
-            df_dep_api_used = df_dep_api_used[["ResourceName",
-                                               "ResourceKind",
-                                               "IntroducedMajor",
-                                               "IntroducedMinor",
-                                               "DeprecatedMajor",
-                                               "DeprecatedMinor",
-                                               "RemovedMajor",
-                                               "RemovedMinor",
-                                               "ResourceApiVersion",
-                                               "msg"]]
-            df_dep_api_used = df_dep_api_used.rename(columns={
-                "ResourceName": "Resource Name",
-                "ResourceKind": "Resource Kind",
-                "IntroducedMajor": "Introduced Major",
-                "IntroducedMinor": "Introduced Minor",
-                "DeprecatedMajor": "Deprecated Major",
-                "DeprecatedMinor": "Deprecated Minor",
-                "RemovedMajor": "Removed Major",
-                "RemovedMinor": "Removed Minor",
-                "ResourceApiVersion": "Resource API Version",
-                "msg": "Recommendation"
-            })
+            df_dep_api_used = df[df["AuditResultName"] == "DeprecatedAPIUsed"]
+            df_dep_api_used = df_dep_api_used[
+                [
+                    "ResourceName",
+                    "ResourceKind",
+                    "IntroducedMajor",
+                    "IntroducedMinor",
+                    "DeprecatedMajor",
+                    "DeprecatedMinor",
+                    "RemovedMajor",
+                    "RemovedMinor",
+                    "ResourceApiVersion",
+                    "msg",
+                ]
+            ]
+            df_dep_api_used = df_dep_api_used.rename(
+                columns={
+                    "ResourceName": "Resource Name",
+                    "ResourceKind": "Resource Kind",
+                    "IntroducedMajor": "Introduced Major",
+                    "IntroducedMinor": "Introduced Minor",
+                    "DeprecatedMajor": "Deprecated Major",
+                    "DeprecatedMinor": "Deprecated Minor",
+                    "RemovedMajor": "Removed Major",
+                    "RemovedMinor": "Removed Minor",
+                    "ResourceApiVersion": "Resource API Version",
+                    "msg": "Recommendation",
+                }
+            )
             self.colour_cells_and_save_to_excel(
                 "Deprecated APIs in use",
                 "Deprecated APIs in use were found. They will be removed, see recommended replacement APIs.",
                 "Deprecated API Used",
                 df_dep_api_used,
-                writer
+                writer,
             )
             self.depr_api = True
         except KeyError:
@@ -1397,15 +1547,16 @@ class Kubenumerate:
         """Host namespace"""
         try:
             # Namespace Host PID True
-            df_ns_host_pid_true = df[df['AuditResultName'] == 'NamespaceHostPIDTrue']
-            df_ns_host_pid_true = df_ns_host_pid_true[[
-                "ResourceNamespace", "ResourceKind", "ResourceName", "msg"]]
-            df_ns_host_pid_true = df_ns_host_pid_true.rename(columns={
-                "ResourceNamespace": "Resource Namespace",
-                "ResourceKind": "Resource Kind",
-                "ResourceName": "Resource Name",
-                "msg": "Recommendation",
-            })
+            df_ns_host_pid_true = df[df["AuditResultName"] == "NamespaceHostPIDTrue"]
+            df_ns_host_pid_true = df_ns_host_pid_true[["ResourceNamespace", "ResourceKind", "ResourceName", "msg"]]
+            df_ns_host_pid_true = df_ns_host_pid_true.rename(
+                columns={
+                    "ResourceNamespace": "Resource Namespace",
+                    "ResourceKind": "Resource Kind",
+                    "ResourceName": "Resource Name",
+                    "msg": "Recommendation",
+                }
+            )
             self.colour_cells_and_save_to_excel(
                 "Host Namespace - hostPID set to true",
                 "HostPID - Controls whether the pod containers can share the host process ID namespace. "
@@ -1413,7 +1564,7 @@ class Kubenumerate:
                 "(ptrace is forbidden by default).",
                 "Host Namespace - hostPID true",
                 df_ns_host_pid_true,
-                writer
+                writer,
             )
             self.hardened = False
         except KeyError:
@@ -1422,15 +1573,18 @@ class Kubenumerate:
 
         try:
             # Namespace Host PID True
-            df_ns_host_network_true = df[df['AuditResultName'] == 'NamespaceHostNetworkTrue']
-            df_ns_host_network_true = df_ns_host_network_true[[
-                "ResourceNamespace", "ResourceKind", "ResourceName", "msg"]]
-            df_ns_host_network_true = df_ns_host_network_true.rename(columns={
-                "ResourceNamespace": "Resource Namespace",
-                "ResourceKind": "Resource Kind",
-                "ResourceName": "Resource Name",
-                "msg": "Recommendation",
-            })
+            df_ns_host_network_true = df[df["AuditResultName"] == "NamespaceHostNetworkTrue"]
+            df_ns_host_network_true = df_ns_host_network_true[
+                ["ResourceNamespace", "ResourceKind", "ResourceName", "msg"]
+            ]
+            df_ns_host_network_true = df_ns_host_network_true.rename(
+                columns={
+                    "ResourceNamespace": "Resource Namespace",
+                    "ResourceKind": "Resource Kind",
+                    "ResourceName": "Resource Name",
+                    "msg": "Recommendation",
+                }
+            )
             self.colour_cells_and_save_to_excel(
                 "Host Namespace - hostNetwork set to true",
                 "HostNetwork - Controls whether the pod may use the node network namespace. "
@@ -1438,7 +1592,7 @@ class Kubenumerate:
                 "be used to snoop on network activity of other pods on the same node.",
                 "Host Namespace-hostNetwork true",
                 df_ns_host_network_true,
-                writer
+                writer,
             )
             self.hardened = False
         except KeyError:
@@ -1449,23 +1603,26 @@ class Kubenumerate:
         """Limits"""
         try:
             # Limits Not Set
-            df_limits_not_set = df[df['AuditResultName'] == 'LimitsNotSet']
-            df_limits_not_set = df_limits_not_set[[
-                "ResourceNamespace", "ResourceKind", "ResourceName", "Container", "msg"]]
-            df_limits_not_set = df_limits_not_set.rename(columns={
-                "ResourceNamespace": "Resource Namespace",
-                "ResourceKind": "Resource Kind",
-                "ResourceName": "Resource Name",
-                "Container": "Affected Container",
-                "msg": "Recommendation",
-            })
+            df_limits_not_set = df[df["AuditResultName"] == "LimitsNotSet"]
+            df_limits_not_set = df_limits_not_set[
+                ["ResourceNamespace", "ResourceKind", "ResourceName", "Container", "msg"]
+            ]
+            df_limits_not_set = df_limits_not_set.rename(
+                columns={
+                    "ResourceNamespace": "Resource Namespace",
+                    "ResourceKind": "Resource Kind",
+                    "ResourceName": "Resource Name",
+                    "Container": "Affected Container",
+                    "msg": "Recommendation",
+                }
+            )
             self.colour_cells_and_save_to_excel(
                 "Resource Limits Not Set",
                 "Containers without resource limits set could be used to consume resources which would have a "
                 "negative impact on the cluster",
                 "Limits - Not set",
                 df_limits_not_set,
-                writer
+                writer,
             )
             self.limits_set = False
         except KeyError:
@@ -1474,23 +1631,26 @@ class Kubenumerate:
 
         try:
             # Limits CPU Not Set
-            df_limits_cpu_not_set = df[df['AuditResultName'] == 'LimitsCPUNotSet']
-            df_limits_cpu_not_set = df_limits_cpu_not_set[[
-                "ResourceNamespace", "ResourceKind", "ResourceName", "Container", "msg"]]
-            df_limits_cpu_not_set = df_limits_cpu_not_set.rename(columns={
-                "ResourceNamespace": "Resource Namespace",
-                "ResourceKind": "Resource Kind",
-                "ResourceName": "Resource Name",
-                "Container": "Affected Container",
-                "msg": "Recommendation",
-            })
+            df_limits_cpu_not_set = df[df["AuditResultName"] == "LimitsCPUNotSet"]
+            df_limits_cpu_not_set = df_limits_cpu_not_set[
+                ["ResourceNamespace", "ResourceKind", "ResourceName", "Container", "msg"]
+            ]
+            df_limits_cpu_not_set = df_limits_cpu_not_set.rename(
+                columns={
+                    "ResourceNamespace": "Resource Namespace",
+                    "ResourceKind": "Resource Kind",
+                    "ResourceName": "Resource Name",
+                    "Container": "Affected Container",
+                    "msg": "Recommendation",
+                }
+            )
             self.colour_cells_and_save_to_excel(
                 "CPU Limits Not Set",
                 "Containers without CPU limits set could be used to consume resources which would have a "
                 "negative impact on the cluster",
                 "Limits - CPU Not set",
                 df_limits_cpu_not_set,
-                writer
+                writer,
             )
             self.limits_set = False
         except KeyError:
@@ -1501,22 +1661,35 @@ class Kubenumerate:
         """Mounted paths"""
         try:
             # Sensitive Paths Mounted
-            df_sensitive_paths_mounted = df[df['AuditResultName'] == 'SensitivePathsMounted']
+            df_sensitive_paths_mounted = df[df["AuditResultName"] == "SensitivePathsMounted"]
             df_sensitive_paths_mounted = df_sensitive_paths_mounted[
-                ["MountName", "MountPath", "MountReadOnly", "MountVolume", "MountVolumeHostPath", "ResourceNamespace",
-                 "ResourceKind", "ResourceName", "Container", "msg"]]
-            df_sensitive_paths_mounted = df_sensitive_paths_mounted.rename(columns={
-                "MountName": "Mount Name",
-                "MountPath": "Mount Path",
-                "MountReadOnly": "Mount ReadOnly",
-                "MountVolume": "Mount Volume",
-                "MountVolumeHostPath": "Mount Volume Host Path",
-                "ResourceNamespace": "Resource Namespace",
-                "ResourceKind": "Resource Kind",
-                "ResourceName": "Resource Name",
-                "Container": "Affected Container",
-                "msg": "Recommendation",
-            })
+                [
+                    "MountName",
+                    "MountPath",
+                    "MountReadOnly",
+                    "MountVolume",
+                    "MountVolumeHostPath",
+                    "ResourceNamespace",
+                    "ResourceKind",
+                    "ResourceName",
+                    "Container",
+                    "msg",
+                ]
+            ]
+            df_sensitive_paths_mounted = df_sensitive_paths_mounted.rename(
+                columns={
+                    "MountName": "Mount Name",
+                    "MountPath": "Mount Path",
+                    "MountReadOnly": "Mount ReadOnly",
+                    "MountVolume": "Mount Volume",
+                    "MountVolumeHostPath": "Mount Volume Host Path",
+                    "ResourceNamespace": "Resource Namespace",
+                    "ResourceKind": "Resource Kind",
+                    "ResourceName": "Resource Name",
+                    "Container": "Affected Container",
+                    "msg": "Recommendation",
+                }
+            )
             self.colour_cells_and_save_to_excel(
                 "Sensitive Paths Mounted to Containers",
                 "Mounting some sensitive host paths (like /etc, /proc, or /var/run/docker.sock) may allow a "
@@ -1524,7 +1697,7 @@ class Kubenumerate:
                 " activity. These sensitive paths should not be mounted.",
                 "Mounts - Sensitive Paths",
                 df_sensitive_paths_mounted,
-                writer
+                writer,
             )
             self.hardened = False
         except KeyError:
@@ -1535,13 +1708,15 @@ class Kubenumerate:
         """Network policies"""
         try:
             # Missing Default Deny Ingress And Egress Network Policy
-            df_default_deny_missing = df[df['AuditResultName'] == 'MissingDefaultDenyIngressAndEgressNetworkPolicy']
+            df_default_deny_missing = df[df["AuditResultName"] == "MissingDefaultDenyIngressAndEgressNetworkPolicy"]
             df_default_deny_missing = df_default_deny_missing[["ResourceKind", "ResourceName", "msg"]]
-            df_default_deny_missing = df_default_deny_missing.rename(columns={
-                "ResourceKind": "Resource Kind",
-                "ResourceName": "Resource Name",
-                "msg": "Recommendation",
-            })
+            df_default_deny_missing = df_default_deny_missing.rename(
+                columns={
+                    "ResourceKind": "Resource Kind",
+                    "ResourceName": "Resource Name",
+                    "msg": "Recommendation",
+                }
+            )
             self.colour_cells_and_save_to_excel(
                 "NetworkPolicies - No default deny Ingress/Egress",
                 "Just like with firewall rules, the best practice is to deny all internet traffic by default "
@@ -1549,7 +1724,7 @@ class Kubenumerate:
                 "traffic).",
                 "NetworkPolicies - No deny",
                 df_default_deny_missing,
-                writer
+                writer,
             )
             self.hardened = False
             self.sus_rbac = True
@@ -1559,14 +1734,15 @@ class Kubenumerate:
 
         try:
             # AllowAllEgressNetworkPolicyExists
-            df_allow_all = df[df['AuditResultName'] == 'AllowAllEgressNetworkPolicyExists']
-            df_allow_all = df_allow_all[[
-                "ResourceKind", "ResourceName", "msg"]]
-            df_allow_all = df_allow_all.rename(columns={
-                "ResourceKind": "Resource Kind",
-                "ResourceName": "Resource Name",
-                "msg": "Recommendation",
-            })
+            df_allow_all = df[df["AuditResultName"] == "AllowAllEgressNetworkPolicyExists"]
+            df_allow_all = df_allow_all[["ResourceKind", "ResourceName", "msg"]]
+            df_allow_all = df_allow_all.rename(
+                columns={
+                    "ResourceKind": "Resource Kind",
+                    "ResourceName": "Resource Name",
+                    "msg": "Recommendation",
+                }
+            )
             self.colour_cells_and_save_to_excel(
                 "Allow All Egress NetworkPolicy Exists",
                 "Just like with firewall rules, the best practice is to deny all internet traffic by default "
@@ -1574,7 +1750,7 @@ class Kubenumerate:
                 "traffic).",
                 "NetworkPolicies - Allow all",
                 df_allow_all,
-                writer
+                writer,
             )
             self.hardened = False
         except KeyError:
@@ -1585,16 +1761,19 @@ class Kubenumerate:
         """Running as"""
         try:
             # Run As Non Root PSC Nil CSC Nil
-            df_run_as_non_root_nil = df[df['AuditResultName'] == 'RunAsNonRootPSCNilCSCNil']
-            df_run_as_non_root_nil = df_run_as_non_root_nil[[
-                "ResourceNamespace", "ResourceKind", "ResourceName", "Container", "msg"]]
-            df_run_as_non_root_nil = df_run_as_non_root_nil.rename(columns={
-                "ResourceNamespace": "Resource Namespace",
-                "ResourceKind": "Resource Kind",
-                "ResourceName": "Resource Name",
-                "Container": "Affected Container",
-                "msg": "Recommendation",
-            })
+            df_run_as_non_root_nil = df[df["AuditResultName"] == "RunAsNonRootPSCNilCSCNil"]
+            df_run_as_non_root_nil = df_run_as_non_root_nil[
+                ["ResourceNamespace", "ResourceKind", "ResourceName", "Container", "msg"]
+            ]
+            df_run_as_non_root_nil = df_run_as_non_root_nil.rename(
+                columns={
+                    "ResourceNamespace": "Resource Namespace",
+                    "ResourceKind": "Resource Kind",
+                    "ResourceName": "Resource Name",
+                    "Container": "Affected Container",
+                    "msg": "Recommendation",
+                }
+            )
             self.colour_cells_and_save_to_excel(
                 "Run As Non Root - Pod SecurityContext/Container SecurityContext Nil",
                 "Containers should be run as a non-root user with the minimum required permissions (principle "
@@ -1605,7 +1784,7 @@ class Kubenumerate:
                 "SecurityContext or the Pod SecurityContext for the nonroot audit to pass.",
                 "Non Root - Missing",
                 df_run_as_non_root_nil,
-                writer
+                writer,
             )
             self.hardened = False
         except KeyError:
@@ -1614,16 +1793,19 @@ class Kubenumerate:
 
         try:
             # Run As User CSC Root
-            df_run_as_user_csc_root = df[df['AuditResultName'] == 'RunAsUserCSCRoot']
-            df_run_as_user_csc_root = df_run_as_user_csc_root[[
-                "ResourceNamespace", "ResourceKind", "ResourceName", "Container", "msg"]]
-            df_run_as_user_csc_root = df_run_as_user_csc_root.rename(columns={
-                "ResourceNamespace": "Resource Namespace",
-                "ResourceKind": "Resource Kind",
-                "ResourceName": "Resource Name",
-                "Container": "Affected Container",
-                "msg": "Recommendation",
-            })
+            df_run_as_user_csc_root = df[df["AuditResultName"] == "RunAsUserCSCRoot"]
+            df_run_as_user_csc_root = df_run_as_user_csc_root[
+                ["ResourceNamespace", "ResourceKind", "ResourceName", "Container", "msg"]
+            ]
+            df_run_as_user_csc_root = df_run_as_user_csc_root.rename(
+                columns={
+                    "ResourceNamespace": "Resource Namespace",
+                    "ResourceKind": "Resource Kind",
+                    "ResourceName": "Resource Name",
+                    "Container": "Affected Container",
+                    "msg": "Recommendation",
+                }
+            )
             self.colour_cells_and_save_to_excel(
                 "Run As Non Root - CSC UID 0",
                 "Containers should be run as a non-root user with the minimum required permissions (principle "
@@ -1634,7 +1816,7 @@ class Kubenumerate:
                 "SecurityContext or the Pod SecurityContext for the nonroot audit to pass.",
                 "Non Root - CSC UID 0",
                 df_run_as_user_csc_root,
-                writer
+                writer,
             )
             self.hardened = False
         except KeyError:
@@ -1643,16 +1825,19 @@ class Kubenumerate:
 
         try:
             # Run As User PSC Root
-            df_run_as_user_psc_root = df[df['AuditResultName'] == 'RunAsUserPSCRoot']
-            df_run_as_user_psc_root = df_run_as_user_psc_root[[
-                "ResourceNamespace", "ResourceKind", "ResourceName", "Container", "msg"]]
-            df_run_as_user_psc_root = df_run_as_user_psc_root.rename(columns={
-                "ResourceNamespace": "Resource Namespace",
-                "ResourceKind": "Resource Kind",
-                "ResourceName": "Resource Name",
-                "Container": "Affected Container",
-                "msg": "Recommendation",
-            })
+            df_run_as_user_psc_root = df[df["AuditResultName"] == "RunAsUserPSCRoot"]
+            df_run_as_user_psc_root = df_run_as_user_psc_root[
+                ["ResourceNamespace", "ResourceKind", "ResourceName", "Container", "msg"]
+            ]
+            df_run_as_user_psc_root = df_run_as_user_psc_root.rename(
+                columns={
+                    "ResourceNamespace": "Resource Namespace",
+                    "ResourceKind": "Resource Kind",
+                    "ResourceName": "Resource Name",
+                    "Container": "Affected Container",
+                    "msg": "Recommendation",
+                }
+            )
             self.colour_cells_and_save_to_excel(
                 "Run As User UID 0 - Pod SecurityContext ",
                 "Containers should be run as a non-root user with the minimum required permissions (principle "
@@ -1663,7 +1848,7 @@ class Kubenumerate:
                 "SecurityContext or the Pod SecurityContext for the nonroot audit to pass.",
                 "Non Root - PSC UID 0",
                 df_run_as_user_psc_root,
-                writer
+                writer,
             )
             self.hardened = False
         except KeyError:
@@ -1674,16 +1859,19 @@ class Kubenumerate:
         """Privilege escalation"""
         try:
             # Allow Privilege Escalation Nil
-            df_allow_privilege_escalation_nil = df[df['AuditResultName'] == 'AllowPrivilegeEscalationNil']
-            df_allow_privilege_escalation_nil = df_allow_privilege_escalation_nil[[
-                "ResourceNamespace", "ResourceKind", "ResourceName", "Container", "msg"]]
-            df_allow_privilege_escalation_nil = df_allow_privilege_escalation_nil.rename(columns={
-                "ResourceNamespace": "Resource Namespace",
-                "ResourceKind": "Resource Kind",
-                "ResourceName": "Resource Name",
-                "Container": "Affected Container",
-                "msg": "Recommendation",
-            })
+            df_allow_privilege_escalation_nil = df[df["AuditResultName"] == "AllowPrivilegeEscalationNil"]
+            df_allow_privilege_escalation_nil = df_allow_privilege_escalation_nil[
+                ["ResourceNamespace", "ResourceKind", "ResourceName", "Container", "msg"]
+            ]
+            df_allow_privilege_escalation_nil = df_allow_privilege_escalation_nil.rename(
+                columns={
+                    "ResourceNamespace": "Resource Namespace",
+                    "ResourceKind": "Resource Kind",
+                    "ResourceName": "Resource Name",
+                    "Container": "Affected Container",
+                    "msg": "Recommendation",
+                }
+            )
             self.colour_cells_and_save_to_excel(
                 "Privilege Escalation - No Explicit Deny",
                 "allowPrivilegeEscalation controls whether a process can gain more privileges than its parent "
@@ -1691,7 +1879,7 @@ class Kubenumerate:
                 "to false in the container's SecurityContext.",
                 "PrivilegeEscalation - Nil",
                 df_allow_privilege_escalation_nil,
-                writer
+                writer,
             )
             self.privesc_set = False
         except KeyError:
@@ -1700,16 +1888,19 @@ class Kubenumerate:
 
         try:
             # Allow Privilege Escalation True
-            df_allow_privilege_escalation_true = df[df['AuditResultName'] == 'AllowPrivilegeEscalationTrue']
-            df_allow_privilege_escalation_true = df_allow_privilege_escalation_true[[
-                "ResourceNamespace", "ResourceKind", "ResourceName", "Container", "msg"]]
-            df_allow_privilege_escalation_true = df_allow_privilege_escalation_true.rename(columns={
-                "ResourceNamespace": "Resource Namespace",
-                "ResourceKind": "Resource Kind",
-                "ResourceName": "Resource Name",
-                "Container": "Affected Container",
-                "msg": "Recommendation",
-            })
+            df_allow_privilege_escalation_true = df[df["AuditResultName"] == "AllowPrivilegeEscalationTrue"]
+            df_allow_privilege_escalation_true = df_allow_privilege_escalation_true[
+                ["ResourceNamespace", "ResourceKind", "ResourceName", "Container", "msg"]
+            ]
+            df_allow_privilege_escalation_true = df_allow_privilege_escalation_true.rename(
+                columns={
+                    "ResourceNamespace": "Resource Namespace",
+                    "ResourceKind": "Resource Kind",
+                    "ResourceName": "Resource Name",
+                    "Container": "Affected Container",
+                    "msg": "Recommendation",
+                }
+            )
             self.colour_cells_and_save_to_excel(
                 "Privilege Escalation - flag 'privilegeEscalation' set to True",
                 "allowPrivilegeEscalation controls whether a process can gain more privileges than its parent "
@@ -1717,7 +1908,7 @@ class Kubenumerate:
                 "to false in the container's SecurityContext.",
                 "PrivilegeEscalation - True",
                 df_allow_privilege_escalation_true,
-                writer
+                writer,
             )
             self.privesc_set = False
         except KeyError:
@@ -1728,16 +1919,19 @@ class Kubenumerate:
         """Privileged"""
         try:
             # Privileged Nil
-            df_privileged_nil = df[df['AuditResultName'] == 'PrivilegedNil']
-            df_privileged_nil = df_privileged_nil[[
-                "ResourceNamespace", "ResourceKind", "ResourceName", "Container", "msg"]]
-            df_privileged_nil = df_privileged_nil.rename(columns={
-                "ResourceNamespace": "Resource Namespace",
-                "ResourceKind": "Resource Kind",
-                "ResourceName": "Resource Name",
-                "Container": "Affected Container",
-                "msg": "Recommendation",
-            })
+            df_privileged_nil = df[df["AuditResultName"] == "PrivilegedNil"]
+            df_privileged_nil = df_privileged_nil[
+                ["ResourceNamespace", "ResourceKind", "ResourceName", "Container", "msg"]
+            ]
+            df_privileged_nil = df_privileged_nil.rename(
+                columns={
+                    "ResourceNamespace": "Resource Namespace",
+                    "ResourceKind": "Resource Kind",
+                    "ResourceName": "Resource Name",
+                    "Container": "Affected Container",
+                    "msg": "Recommendation",
+                }
+            )
             self.colour_cells_and_save_to_excel(
                 "Privileged flag not set to false in SecurityContext",
                 "Running a container as privileged gives all capabilities to the container, and it also lifts "
@@ -1746,7 +1940,7 @@ class Kubenumerate:
                 " Docker within Docker, but should not be used in most cases.",
                 "Privileged - Nil",
                 df_privileged_nil,
-                writer
+                writer,
             )
             self.sus_rbac = True
             self.privileged_flag = True
@@ -1756,16 +1950,19 @@ class Kubenumerate:
 
         try:
             # Privileged True
-            df_privileged_true = df[df['AuditResultName'] == 'PrivilegedTrue']
-            df_privileged_true = df_privileged_true[[
-                "ResourceNamespace", "ResourceKind", "ResourceName", "Container", "msg"]]
-            df_privileged_true = df_privileged_true.rename(columns={
-                "ResourceNamespace": "Resource Namespace",
-                "ResourceKind": "Resource Kind",
-                "ResourceName": "Resource Name",
-                "Container": "Affected Container",
-                "msg": "Recommendation",
-            })
+            df_privileged_true = df[df["AuditResultName"] == "PrivilegedTrue"]
+            df_privileged_true = df_privileged_true[
+                ["ResourceNamespace", "ResourceKind", "ResourceName", "Container", "msg"]
+            ]
+            df_privileged_true = df_privileged_true.rename(
+                columns={
+                    "ResourceNamespace": "Resource Namespace",
+                    "ResourceKind": "Resource Kind",
+                    "ResourceName": "Resource Name",
+                    "Container": "Affected Container",
+                    "msg": "Recommendation",
+                }
+            )
             self.colour_cells_and_save_to_excel(
                 "Privileged flag set to true in SecurityContext",
                 "Running a container as privileged gives all capabilities to the container, and it also lifts "
@@ -1774,7 +1971,7 @@ class Kubenumerate:
                 " Docker within Docker, but should not be used in most cases.",
                 "Privileged - True",
                 df_privileged_true,
-                writer
+                writer,
             )
             self.sus_rbac = True
             self.privileged_flag = True
@@ -1786,22 +1983,25 @@ class Kubenumerate:
         """Root filesystem"""
         try:
             # ReadOnlyRootFilesystem Nil
-            df_read_only_root_filesystem_nil = df[df['AuditResultName'] == 'ReadOnlyRootFilesystemNil']
-            df_read_only_root_filesystem_nil = df_read_only_root_filesystem_nil[[
-                "ResourceNamespace", "ResourceKind", "ResourceName", "Container", "msg"]]
-            df_read_only_root_filesystem_nil = df_read_only_root_filesystem_nil.rename(columns={
-                "ResourceNamespace": "Resource Namespace",
-                "ResourceKind": "Resource Kind",
-                "ResourceName": "Resource Name",
-                "Container": "Affected Container",
-                "msg": "Recommendation",
-            })
+            df_read_only_root_filesystem_nil = df[df["AuditResultName"] == "ReadOnlyRootFilesystemNil"]
+            df_read_only_root_filesystem_nil = df_read_only_root_filesystem_nil[
+                ["ResourceNamespace", "ResourceKind", "ResourceName", "Container", "msg"]
+            ]
+            df_read_only_root_filesystem_nil = df_read_only_root_filesystem_nil.rename(
+                columns={
+                    "ResourceNamespace": "Resource Namespace",
+                    "ResourceKind": "Resource Kind",
+                    "ResourceName": "Resource Name",
+                    "Container": "Affected Container",
+                    "msg": "Recommendation",
+                }
+            )
             self.colour_cells_and_save_to_excel(
                 "readOnlyRootFilesystem not set",
                 "If a container does not need to write files, it should be run with a read-only filesystem.",
                 "Root FileSystem - ReadOnly Nil",
                 df_read_only_root_filesystem_nil,
-                writer
+                writer,
             )
             self.hardened = False
         except KeyError:
@@ -1812,16 +2012,19 @@ class Kubenumerate:
         """Seccomp profile"""
         try:
             # Seccomp Profile Missing
-            df_seccomp_profile_missing = df[df['AuditResultName'] == 'SeccompProfileMissing']
-            df_seccomp_profile_missing = df_seccomp_profile_missing[[
-                "ResourceNamespace", "ResourceKind", "ResourceName", "Container", "msg"]]
-            df_seccomp_profile_missing = df_seccomp_profile_missing.rename(columns={
-                "ResourceNamespace": "Resource Namespace",
-                "ResourceKind": "Resource Kind",
-                "ResourceName": "Resource Name",
-                "Container": "Affected Container",
-                "msg": "Recommendation",
-            })
+            df_seccomp_profile_missing = df[df["AuditResultName"] == "SeccompProfileMissing"]
+            df_seccomp_profile_missing = df_seccomp_profile_missing[
+                ["ResourceNamespace", "ResourceKind", "ResourceName", "Container", "msg"]
+            ]
+            df_seccomp_profile_missing = df_seccomp_profile_missing.rename(
+                columns={
+                    "ResourceNamespace": "Resource Namespace",
+                    "ResourceKind": "Resource Kind",
+                    "ResourceName": "Resource Name",
+                    "Container": "Affected Container",
+                    "msg": "Recommendation",
+                }
+            )
             self.colour_cells_and_save_to_excel(
                 "Seccomp Profile Missing",
                 "Seccomp is enabled by adding a seccomp profile to the security context. The seccomp profile can "
@@ -1829,7 +2032,7 @@ class Kubenumerate:
                 "or a security context, which enables seccomp only for that container.",
                 "Seccomp - Missing",
                 df_seccomp_profile_missing,
-                writer
+                writer,
             )
             self.hardened = False
         except KeyError:
@@ -1847,23 +2050,25 @@ class Kubenumerate:
         else:
             time_str = "N/A"
 
-        print(f"\t Scanned: [{u'█' * x}{' ' * (size - x)}] {iteration}/{count} {resource}. ETA: {time_str}",
-              end='\r',
-              file=sys.stderr,
-              flush=True)
+        print(
+            f"\t Scanned: [{u'█' * x}{' ' * (size - x)}] {iteration}/{count} {resource}. ETA: {time_str}",
+            end="\r",
+            file=sys.stderr,
+            flush=True,
+        )
 
     def recover_from_aborted_scan(self):
         """Detect if there are any aborted lists"""
 
-        if os.path.isfile(self.pkl_recovery) and os.path.getsize(
-                self.pkl_recovery) > 0:
+        if os.path.isfile(self.pkl_recovery) and os.path.getsize(self.pkl_recovery) > 0:
             # File exists and has content. Restore it
             with open(self.pkl_recovery, "rb") as recovery_file:
                 data = pickle.load(recovery_file)
                 scanned_images, vuln_images, vuln_containers, iteration = data
                 print(
                     f'{self.cyan_text("[*]")} Restoring data from previous interrupted scan: '
-                    f'jumping to pod #{iteration}')
+                    f"jumping to pod #{iteration}"
+                )
             return scanned_images, vuln_images, vuln_containers, iteration, True
 
         # Otherwise, return new lists
@@ -1872,21 +2077,22 @@ class Kubenumerate:
     def recover_from_aborted_scan_dict(self):
         """Detect if there are any aborted lists"""
 
-        if os.path.isfile(self.pkl_recovery) and os.path.getsize(
-                self.pkl_recovery) > 0:
+        if os.path.isfile(self.pkl_recovery) and os.path.getsize(self.pkl_recovery) > 0:
             # File exists and has content. Restore it
             with open(self.pkl_recovery, "rb") as recovery_file:
                 data = pickle.load(recovery_file)
                 images, iteration = data
-                print(f'{self.cyan_text("[*]")} Restoring data from previous interrupted scan: '
-                      f'jumping to pod #{iteration}')
+                print(
+                    f'{self.cyan_text("[*]")} Restoring data from previous interrupted scan: '
+                    f"jumping to pod #{iteration}"
+                )
             return images, iteration, True
 
         # Otherwise, return new vars
         return {}, 0, False
 
     def run_trivy(self, image_name):
-        """ Run Trivy against the specified image """
+        """Run Trivy against the specified image"""
 
         command = f"{self.trivy_bin} i -q --scanners vuln --severity HIGH,CRITICAL --format json {image_name}"
 
@@ -1898,7 +2104,7 @@ class Kubenumerate:
             return "error"
 
         # Process completed, get the output
-        trivy_output = process.stdout.decode('utf-8')
+        trivy_output = process.stdout.decode("utf-8")
         return json.loads(trivy_output)
 
     def trivy_parser(self, writer):
@@ -1920,8 +2126,9 @@ class Kubenumerate:
         if total_pods == 0:
             print(
                 f'{self.red_text("[-]")} No pods detected, aborting...\n{self.red_text("[-]")} Please check the '
-                f'permissions of your current role with the following command:\n\t'
-                f'{self.yellow_text("kubectl auth can-i --list")}')
+                f"permissions of your current role with the following command:\n\t"
+                f'{self.yellow_text("kubectl auth can-i --list")}'
+            )
             return
 
         # Create recovery file if it doesn't exist
@@ -1933,7 +2140,8 @@ class Kubenumerate:
             print(
                 f'{self.yellow_text("[!]")} Launching trivy to scan every unique container image for vulns. This '
                 f'might take a while, please wait...\n{self.yellow_text("[!]")} Known issues: if stuck at 0, '
-                f'run: \n\ttrivy i --download-java-db-only')
+                f"run: \n\ttrivy i --download-java-db-only"
+            )
             print(f'{self.cyan_text("[*]")} Scanning {self.yellow_text(f"{total_pods}")} pods detected...')
 
         # Recover from aborted scan, if needed
@@ -1951,8 +2159,9 @@ class Kubenumerate:
                 if self.verbosity > 0:
                     print(
                         f'{self.red_text("[-]")} It looks like this test was already run in the past.\nIf you want to '
-                        f'redo the assessment, select a different output folder, or run\n\t'
-                        f'{self.yellow_text(f"rm {self.pkl_recovery}")}')
+                        f"redo the assessment, select a different output folder, or run\n\t"
+                        f'{self.yellow_text(f"rm {self.pkl_recovery}")}'
+                    )
                 break
 
             # Skip to the recovered point
@@ -1997,10 +2206,10 @@ class Kubenumerate:
                                     image_name,
                                     pod_name,
                                     container_name,
-                                    previous_image[0][4],   # crits
-                                    previous_image[0][5],   # crit CVEs
-                                    previous_image[0][6],   # highs
-                                    previous_image[0][7],   # high CVEs
+                                    previous_image[0][4],  # crits
+                                    previous_image[0][5],  # crit CVEs
+                                    previous_image[0][6],  # highs
+                                    previous_image[0][7],  # high CVEs
                                 ]
                                 vuln_containers.append(new_image)
                                 continue
@@ -2022,15 +2231,15 @@ class Kubenumerate:
                             # Get number of CVEs
                             highs, found_high_CVEs, crits, found_crit_CVEs = 0, [], 0, []
                             for result in vulnerabilities.get("Results", []):
-                                for vulnerability in result.get('Vulnerabilities', []):
-                                    vuln_id = vulnerability.get('VulnerabilityID')
-                                    if "HIGH" in vulnerability.get('Severity'):
+                                for vulnerability in result.get("Vulnerabilities", []):
+                                    vuln_id = vulnerability.get("VulnerabilityID")
+                                    if "HIGH" in vulnerability.get("Severity"):
                                         if vuln_id not in found_high_CVEs:
-                                            found_high_CVEs.append(vulnerability.get('VulnerabilityID'))
+                                            found_high_CVEs.append(vulnerability.get("VulnerabilityID"))
                                             highs += 1
-                                    if "CRITICAL" in vulnerability.get('Severity'):
+                                    if "CRITICAL" in vulnerability.get("Severity"):
                                         if vuln_id not in found_crit_CVEs:
-                                            found_crit_CVEs.append(vulnerability.get('VulnerabilityID'))
+                                            found_crit_CVEs.append(vulnerability.get("VulnerabilityID"))
                                             crits += 1
 
                             if highs > 0 or crits > 0:
@@ -2057,8 +2266,10 @@ class Kubenumerate:
             except KeyboardInterrupt:
                 print("\n", flush=True, file=sys.stdout)
                 if self.verbosity > 0:
-                    print(f'\n{self.cyan_text("[*]")} ^C detected. Recovery file saved to '
-                          f'{self.cyan_text(self.pkl_recovery)}...')
+                    print(
+                        f'\n{self.cyan_text("[*]")} ^C detected. Recovery file saved to '
+                        f"{self.cyan_text(self.pkl_recovery)}..."
+                    )
                 sys.exit(99)
             except json.decoder.JSONDecodeError or ValueError as e:
                 if self.verbosity > 1:
@@ -2082,20 +2293,21 @@ class Kubenumerate:
                 # TODO: edit this tab to present the CVEs in a better way? Currently it's VERY ugly
                 "CRIT CVEs affecting image",
                 "HIGHS",
-                "HIGH CVEs affecting image"]
+                "HIGH CVEs affecting image",
+            ]
             self.colour_cells_and_save_to_excel(
                 "Images with Vulnerable Tags being used",
                 "Scanners picked up containers being affected by High and Critical well-known vulnerabilities. "
                 "These images' tags should be upgraded as soon as possible",
                 "Vulnerable Images",
                 df,
-                writer
+                writer,
             )
         else:
             print(f'{self.green_text("[+]")} No images found containing any high- or critical-risk issues')
 
     def raise_issues(self):
-        """ Suggest what issues might be present """
+        """Suggest what issues might be present"""
 
         issues_raised = {
             "version": False,
@@ -2107,8 +2319,15 @@ class Kubenumerate:
             "limits_set": False,
         }
 
-        if (self.hardened and not self.automount and not self.vuln_image and self.version_diff <= 1
-                and not self.privileged_flag and not self.cis_detected and not self.limits_set):
+        if (
+            self.hardened
+            and not self.automount
+            and not self.vuln_image
+            and self.version_diff <= 1
+            and not self.privileged_flag
+            and not self.cis_detected
+            and not self.limits_set
+        ):
             print(f'{self.green_text("[+]")} No findings detected in the cluster.')
             return
 
@@ -2168,15 +2387,17 @@ class Kubenumerate:
         worksheet.set_zoom(90)
 
         worksheet.set_column(0, len(df.columns) - 1, 20)
-        header_format = workbook.add_format({
-            'font_name': 'Calibri', 'bg_color': '#A93545', 'bold': True, 'font_color': 'white', 'align': 'left'})
-        title_format = workbook.add_format({
-            'font_name': 'Calibri', 'bg_color': '#A93545', 'font_color': 'white', 'font_size': 20})
-        bg_format1 = workbook.add_format({'bg_color': '#E2E2E2'})
-        bg_format2 = workbook.add_format({'bg_color': 'white'})
+        header_format = workbook.add_format(
+            {"font_name": "Calibri", "bg_color": "#A93545", "bold": True, "font_color": "white", "align": "left"}
+        )
+        title_format = workbook.add_format(
+            {"font_name": "Calibri", "bg_color": "#A93545", "font_color": "white", "font_size": 20}
+        )
+        bg_format1 = workbook.add_format({"bg_color": "#E2E2E2"})
+        bg_format2 = workbook.add_format({"bg_color": "white"})
 
-        worksheet.merge_range('A1:AC1', title, title_format)
-        worksheet.merge_range('A2:AC2', subtitle)
+        worksheet.merge_range("A1:AC1", title, title_format)
+        worksheet.merge_range("A2:AC2", subtitle)
         worksheet.set_row(2, 15)  # row height 15
 
         for col_num, value in enumerate(df.columns.values):
@@ -2192,17 +2413,18 @@ class Kubenumerate:
         df.to_excel(writer, index=False, sheet_name=sheet_name, startrow=3, header=False)
 
     def print_banner(self):
-        banner = (f"""
+        banner = f"""
            {self.cyan_text('  +-----+')}{self.red_text('  1. -----')}
            {self.cyan_text(' /     /|')}{self.red_text('  2. -----')}
            {self.cyan_text('+-----+ |')}{self.yellow_text('  3. -----')}
            {self.cyan_text('|     | +')}{self.yellow_text('  4. -----')}
            {self.cyan_text('|     |/')}{self.green_text('  5. -----')}
-           {self.cyan_text('+-----+')}{self.green_text('  6. -----')}""")
+           {self.cyan_text('+-----+')}{self.green_text('  6. -----')}"""
         print(
-            f'{self.cyan_text(banner)}\n'
-            f'\t     Kubenumerate\n'
-            f'\t  {self.green_text("By 0x5ubt13")} {self.yellow_text(f"v{self.version}")}\n')
+            f"{self.cyan_text(banner)}\n"
+            f"\t     Kubenumerate\n"
+            f'\t  {self.green_text("By 0x5ubt13")} {self.yellow_text(f"v{self.version}")}\n'
+        )
 
     def generate_kubeaudit_equivalent_df_from_kubectl(self):
         """
@@ -2210,6 +2432,7 @@ class Kubenumerate:
         kubeaudit check methods. This replaces the need for kubeaudit output.
         """
         import pandas as pd
+
         findings = []
         # Static mappings for deprecated APIs and sensitive mount paths
         deprecated_apis = {
@@ -2239,21 +2462,25 @@ class Kubenumerate:
                     name = metadata.get("name", "")
                     # Deprecated API check
                     if (api_version, kind) in deprecated_apis:
-                        intro_maj, intro_min, depr_maj, depr_min, rem_maj, rem_min = deprecated_apis[(api_version, kind)]
-                        findings.append({
-                            "AuditResultName": "DeprecatedAPIUsed",
-                            "ResourceNamespace": namespace,
-                            "ResourceKind": kind,
-                            "ResourceName": name,
-                            "IntroducedMajor": intro_maj,
-                            "IntroducedMinor": intro_min,
-                            "DeprecatedMajor": depr_maj,
-                            "DeprecatedMinor": depr_min,
-                            "RemovedMajor": rem_maj,
-                            "RemovedMinor": rem_min,
-                            "ResourceApiVersion": api_version,
-                            "msg": f"{kind} uses deprecated API version {api_version}.",
-                        })
+                        intro_maj, intro_min, depr_maj, depr_min, rem_maj, rem_min = deprecated_apis[
+                            (api_version, kind)
+                        ]
+                        findings.append(
+                            {
+                                "AuditResultName": "DeprecatedAPIUsed",
+                                "ResourceNamespace": namespace,
+                                "ResourceKind": kind,
+                                "ResourceName": name,
+                                "IntroducedMajor": intro_maj,
+                                "IntroducedMinor": intro_min,
+                                "DeprecatedMajor": depr_maj,
+                                "DeprecatedMinor": depr_min,
+                                "RemovedMajor": rem_maj,
+                                "RemovedMinor": rem_min,
+                                "ResourceApiVersion": api_version,
+                                "msg": f"{kind} uses deprecated API version {api_version}.",
+                            }
+                        )
                     # Pod-level and template checks
                     pod_spec = spec.get("template", {}).get("spec", spec)  # For controllers, use template.spec
                     containers = pod_spec.get("containers", [])
@@ -2270,117 +2497,141 @@ class Kubenumerate:
                         if apparmor_key in anns:
                             apparmor_ann = anns[apparmor_key]
                             if apparmor_ann == "unconfined":
-                                findings.append({
-                                    "AuditResultName": "AppArmorDisabled",
+                                findings.append(
+                                    {
+                                        "AuditResultName": "AppArmorDisabled",
+                                        "ResourceNamespace": namespace,
+                                        "ResourceKind": kind,
+                                        "ResourceName": name,
+                                        "Container": cname,
+                                        "AnnotationValue": apparmor_ann,
+                                        "msg": "AppArmor is disabled (unconfined).",
+                                    }
+                                )
+                        else:
+                            findings.append(
+                                {
+                                    "AuditResultName": "AppArmorAnnotationMissing",
                                     "ResourceNamespace": namespace,
                                     "ResourceKind": kind,
                                     "ResourceName": name,
                                     "Container": cname,
-                                    "AnnotationValue": apparmor_ann,
-                                    "msg": "AppArmor is disabled (unconfined).",
-                                })
-                        else:
-                            findings.append({
-                                "AuditResultName": "AppArmorAnnotationMissing",
-                                "ResourceNamespace": namespace,
-                                "ResourceKind": kind,
-                                "ResourceName": name,
-                                "Container": cname,
-                                "MissingAnnotation": apparmor_key,
-                                "msg": "AppArmor annotation missing.",
-                            })
+                                    "MissingAnnotation": apparmor_key,
+                                    "msg": "AppArmor annotation missing.",
+                                }
+                            )
                         # Seccomp
                         seccomp_ann = anns.get("seccomp.security.alpha.kubernetes.io/pod")
-                        if not seccomp_ann and not pod_spec.get("securityContext", {}).get("seccompProfile") and not security_ctx.get("seccompProfile"):
-                            findings.append({
-                                "AuditResultName": "SeccompProfileMissing",
-                                "ResourceNamespace": namespace,
-                                "ResourceKind": kind,
-                                "ResourceName": name,
-                                "Container": cname,
-                                "msg": "Seccomp profile missing.",
-                            })
+                        if (
+                            not seccomp_ann
+                            and not pod_spec.get("securityContext", {}).get("seccompProfile")
+                            and not security_ctx.get("seccompProfile")
+                        ):
+                            findings.append(
+                                {
+                                    "AuditResultName": "SeccompProfileMissing",
+                                    "ResourceNamespace": namespace,
+                                    "ResourceKind": kind,
+                                    "ResourceName": name,
+                                    "Container": cname,
+                                    "msg": "Seccomp profile missing.",
+                                }
+                            )
                         # AutomountServiceAccountToken
                         automount = pod_spec.get("automountServiceAccountToken", True)
                         sa_name = pod_spec.get("serviceAccountName", "default")
                         if automount and sa_name == "default":
-                            findings.append({
-                                "AuditResultName": "AutomountServiceAccountTokenTrueAndDefaultSA",
-                                "ResourceNamespace": namespace,
-                                "ResourceKind": kind,
-                                "ResourceName": name,
-                                "msg": "Pod automounts service account token and uses default SA.",
-                            })
+                            findings.append(
+                                {
+                                    "AuditResultName": "AutomountServiceAccountTokenTrueAndDefaultSA",
+                                    "ResourceNamespace": namespace,
+                                    "ResourceKind": kind,
+                                    "ResourceName": name,
+                                    "msg": "Pod automounts service account token and uses default SA.",
+                                }
+                            )
                         # Capabilities
                         if not security_ctx or not security_ctx.get("capabilities"):
-                            findings.append({
-                                "AuditResultName": "CapabilityOrSecurityContextMissing",
-                                "ResourceNamespace": namespace,
-                                "ResourceKind": kind,
-                                "ResourceName": name,
-                                "Container": cname,
-                                "msg": "Missing securityContext or capabilities.",
-                            })
+                            findings.append(
+                                {
+                                    "AuditResultName": "CapabilityOrSecurityContextMissing",
+                                    "ResourceNamespace": namespace,
+                                    "ResourceKind": kind,
+                                    "ResourceName": name,
+                                    "Container": cname,
+                                    "msg": "Missing securityContext or capabilities.",
+                                }
+                            )
                         else:
                             caps = security_ctx.get("capabilities", {})
                             if "add" in caps and caps["add"]:
-                                findings.append({
-                                    "AuditResultName": "CapabilityAdded",
-                                    "ResourceNamespace": namespace,
-                                    "ResourceKind": kind,
-                                    "ResourceName": name,
-                                    "Container": cname,
-                                    "Metadata": str(caps["add"]),
-                                    "msg": f"Capabilities added: {caps['add']}",
-                                })
+                                findings.append(
+                                    {
+                                        "AuditResultName": "CapabilityAdded",
+                                        "ResourceNamespace": namespace,
+                                        "ResourceKind": kind,
+                                        "ResourceName": name,
+                                        "Container": cname,
+                                        "Metadata": str(caps["add"]),
+                                        "msg": f"Capabilities added: {caps['add']}",
+                                    }
+                                )
                             if not ("drop" in caps and "ALL" in caps["drop"]):
-                                findings.append({
-                                    "AuditResultName": "CapabilityShouldDropAll",
-                                    "ResourceNamespace": namespace,
-                                    "ResourceKind": kind,
-                                    "ResourceName": name,
-                                    "Container": cname,
-                                    "msg": "Container should drop all capabilities.",
-                                })
+                                findings.append(
+                                    {
+                                        "AuditResultName": "CapabilityShouldDropAll",
+                                        "ResourceNamespace": namespace,
+                                        "ResourceKind": kind,
+                                        "ResourceName": name,
+                                        "Container": cname,
+                                        "msg": "Container should drop all capabilities.",
+                                    }
+                                )
                         # Limits
                         resources = container.get("resources", {})
                         limits = resources.get("limits", {})
                         if not limits:
-                            findings.append({
-                                "AuditResultName": "LimitsNotSet",
-                                "ResourceNamespace": namespace,
-                                "ResourceKind": kind,
-                                "ResourceName": name,
-                                "Container": cname,
-                                "msg": "No resource limits set.",
-                            })
+                            findings.append(
+                                {
+                                    "AuditResultName": "LimitsNotSet",
+                                    "ResourceNamespace": namespace,
+                                    "ResourceKind": kind,
+                                    "ResourceName": name,
+                                    "Container": cname,
+                                    "msg": "No resource limits set.",
+                                }
+                            )
                         if "cpu" not in limits:
-                            findings.append({
-                                "AuditResultName": "LimitsCPUNotSet",
-                                "ResourceNamespace": namespace,
-                                "ResourceKind": kind,
-                                "ResourceName": name,
-                                "Container": cname,
-                                "msg": "No CPU limit set.",
-                            })
+                            findings.append(
+                                {
+                                    "AuditResultName": "LimitsCPUNotSet",
+                                    "ResourceNamespace": namespace,
+                                    "ResourceKind": kind,
+                                    "ResourceName": name,
+                                    "Container": cname,
+                                    "msg": "No CPU limit set.",
+                                }
+                            )
                         # Mounts
                         for vol_mount in container.get("volumeMounts", []):
                             mount_path = vol_mount.get("mountPath", "")
                             for sensitive in sensitive_mount_paths:
                                 if mount_path.startswith(sensitive):
-                                    findings.append({
-                                        "AuditResultName": "SensitivePathsMounted",
-                                        "MountName": vol_mount.get("name", ""),
-                                        "MountPath": mount_path,
-                                        "MountReadOnly": vol_mount.get("readOnly", False),
-                                        "MountVolume": vol_mount.get("name", ""),
-                                        "MountVolumeHostPath": "",  # Could be filled by matching with volumes
-                                        "ResourceNamespace": namespace,
-                                        "ResourceKind": kind,
-                                        "ResourceName": name,
-                                        "Container": cname,
-                                        "msg": f"Sensitive path mounted: {mount_path}",
-                                    })
+                                    findings.append(
+                                        {
+                                            "AuditResultName": "SensitivePathsMounted",
+                                            "MountName": vol_mount.get("name", ""),
+                                            "MountPath": mount_path,
+                                            "MountReadOnly": vol_mount.get("readOnly", False),
+                                            "MountVolume": vol_mount.get("name", ""),
+                                            "MountVolumeHostPath": "",  # Could be filled by matching with volumes
+                                            "ResourceNamespace": namespace,
+                                            "ResourceKind": kind,
+                                            "ResourceName": name,
+                                            "Container": cname,
+                                            "msg": f"Sensitive path mounted: {mount_path}",
+                                        }
+                                    )
                         # Non-root
                         pod_sc = pod_spec.get("securityContext", {})
                         run_as_non_root = security_ctx.get("runAsNonRoot")
@@ -2388,136 +2639,179 @@ class Kubenumerate:
                         pod_run_as_non_root = pod_sc.get("runAsNonRoot")
                         pod_run_as_user = pod_sc.get("runAsUser")
                         if run_as_non_root is None and pod_run_as_non_root is None:
-                            findings.append({
-                                "AuditResultName": "RunAsNonRootPSCNilCSCNil",
-                                "ResourceNamespace": namespace,
-                                "ResourceKind": kind,
-                                "ResourceName": name,
-                                "Container": cname,
-                                "msg": "runAsNonRoot not set in Pod or Container SecurityContext.",
-                            })
+                            findings.append(
+                                {
+                                    "AuditResultName": "RunAsNonRootPSCNilCSCNil",
+                                    "ResourceNamespace": namespace,
+                                    "ResourceKind": kind,
+                                    "ResourceName": name,
+                                    "Container": cname,
+                                    "msg": "runAsNonRoot not set in Pod or Container SecurityContext.",
+                                }
+                            )
                         if run_as_user == 0:
-                            findings.append({
-                                "AuditResultName": "RunAsUserCSCRoot",
-                                "ResourceNamespace": namespace,
-                                "ResourceKind": kind,
-                                "ResourceName": name,
-                                "Container": cname,
-                                "msg": "Container runs as UID 0.",
-                            })
+                            findings.append(
+                                {
+                                    "AuditResultName": "RunAsUserCSCRoot",
+                                    "ResourceNamespace": namespace,
+                                    "ResourceKind": kind,
+                                    "ResourceName": name,
+                                    "Container": cname,
+                                    "msg": "Container runs as UID 0.",
+                                }
+                            )
                         if pod_run_as_user == 0:
-                            findings.append({
-                                "AuditResultName": "RunAsUserPSCRoot",
-                                "ResourceNamespace": namespace,
-                                "ResourceKind": kind,
-                                "ResourceName": name,
-                                "Container": cname,
-                                "msg": "Pod runs as UID 0.",
-                            })
+                            findings.append(
+                                {
+                                    "AuditResultName": "RunAsUserPSCRoot",
+                                    "ResourceNamespace": namespace,
+                                    "ResourceKind": kind,
+                                    "ResourceName": name,
+                                    "Container": cname,
+                                    "msg": "Pod runs as UID 0.",
+                                }
+                            )
                         # Privilege escalation
                         ape = security_ctx.get("allowPrivilegeEscalation")
                         if ape is None:
-                            findings.append({
-                                "AuditResultName": "AllowPrivilegeEscalationNil",
-                                "ResourceNamespace": namespace,
-                                "ResourceKind": kind,
-                                "ResourceName": name,
-                                "Container": cname,
-                                "msg": "allowPrivilegeEscalation not set.",
-                            })
+                            findings.append(
+                                {
+                                    "AuditResultName": "AllowPrivilegeEscalationNil",
+                                    "ResourceNamespace": namespace,
+                                    "ResourceKind": kind,
+                                    "ResourceName": name,
+                                    "Container": cname,
+                                    "msg": "allowPrivilegeEscalation not set.",
+                                }
+                            )
                         elif ape is True:
-                            findings.append({
-                                "AuditResultName": "AllowPrivilegeEscalationTrue",
-                                "ResourceNamespace": namespace,
-                                "ResourceKind": kind,
-                                "ResourceName": name,
-                                "Container": cname,
-                                "msg": "allowPrivilegeEscalation is true.",
-                            })
+                            findings.append(
+                                {
+                                    "AuditResultName": "AllowPrivilegeEscalationTrue",
+                                    "ResourceNamespace": namespace,
+                                    "ResourceKind": kind,
+                                    "ResourceName": name,
+                                    "Container": cname,
+                                    "msg": "allowPrivilegeEscalation is true.",
+                                }
+                            )
                         # Privileged
                         privileged = security_ctx.get("privileged")
                         if privileged is None:
-                            findings.append({
-                                "AuditResultName": "PrivilegedNil",
-                                "ResourceNamespace": namespace,
-                                "ResourceKind": kind,
-                                "ResourceName": name,
-                                "Container": cname,
-                                "msg": "privileged not set.",
-                            })
+                            findings.append(
+                                {
+                                    "AuditResultName": "PrivilegedNil",
+                                    "ResourceNamespace": namespace,
+                                    "ResourceKind": kind,
+                                    "ResourceName": name,
+                                    "Container": cname,
+                                    "msg": "privileged not set.",
+                                }
+                            )
                         elif privileged is True:
-                            findings.append({
-                                "AuditResultName": "PrivilegedTrue",
-                                "ResourceNamespace": namespace,
-                                "ResourceKind": kind,
-                                "ResourceName": name,
-                                "Container": cname,
-                                "msg": "privileged is true.",
-                            })
+                            findings.append(
+                                {
+                                    "AuditResultName": "PrivilegedTrue",
+                                    "ResourceNamespace": namespace,
+                                    "ResourceKind": kind,
+                                    "ResourceName": name,
+                                    "Container": cname,
+                                    "msg": "privileged is true.",
+                                }
+                            )
                         # Root filesystem
                         ro_rootfs = security_ctx.get("readOnlyRootFilesystem")
                         if not ro_rootfs:
-                            findings.append({
-                                "AuditResultName": "ReadOnlyRootFilesystemNil",
+                            findings.append(
+                                {
+                                    "AuditResultName": "ReadOnlyRootFilesystemNil",
+                                    "ResourceNamespace": namespace,
+                                    "ResourceKind": kind,
+                                    "ResourceName": name,
+                                    "Container": cname,
+                                    "msg": "readOnlyRootFilesystem not set or false.",
+                                }
+                            )
+                    # Host namespace
+                    if pod_spec.get("hostPID") is True:
+                        findings.append(
+                            {
+                                "AuditResultName": "NamespaceHostPIDTrue",
                                 "ResourceNamespace": namespace,
                                 "ResourceKind": kind,
                                 "ResourceName": name,
-                                "Container": cname,
-                                "msg": "readOnlyRootFilesystem not set or false.",
-                            })
-                    # Host namespace
-                    if pod_spec.get("hostPID") is True:
-                        findings.append({
-                            "AuditResultName": "NamespaceHostPIDTrue",
-                            "ResourceNamespace": namespace,
-                            "ResourceKind": kind,
-                            "ResourceName": name,
-                            "msg": "hostPID is true.",
-                        })
+                                "msg": "hostPID is true.",
+                            }
+                        )
                     if pod_spec.get("hostNetwork") is True:
-                        findings.append({
-                            "AuditResultName": "NamespaceHostNetworkTrue",
-                            "ResourceNamespace": namespace,
-                            "ResourceKind": kind,
-                            "ResourceName": name,
-                            "msg": "hostNetwork is true.",
-                        })
+                        findings.append(
+                            {
+                                "AuditResultName": "NamespaceHostNetworkTrue",
+                                "ResourceNamespace": namespace,
+                                "ResourceKind": kind,
+                                "ResourceName": name,
+                                "msg": "hostNetwork is true.",
+                            }
+                        )
                     # NetworkPolicies (global, not per pod)
                     if kind == "NetworkPolicy":
                         spec_policy = item.get("spec", {})
                         # pod_selector = spec_policy.get("podSelector", {})
                         policy_types = spec_policy.get("policyTypes", [])
                         if "Ingress" in policy_types and not spec_policy.get("ingress"):
-                            findings.append({
-                                "AuditResultName": "MissingDefaultDenyIngressAndEgressNetworkPolicy",
-                                "ResourceKind": kind,
-                                "ResourceName": name,
-                                "msg": "No default deny ingress policy.",
-                            })
+                            findings.append(
+                                {
+                                    "AuditResultName": "MissingDefaultDenyIngressAndEgressNetworkPolicy",
+                                    "ResourceKind": kind,
+                                    "ResourceName": name,
+                                    "msg": "No default deny ingress policy.",
+                                }
+                            )
                         if "Egress" in policy_types and not spec_policy.get("egress"):
-                            findings.append({
-                                "AuditResultName": "MissingDefaultDenyIngressAndEgressNetworkPolicy",
-                                "ResourceKind": kind,
-                                "ResourceName": name,
-                                "msg": "No default deny egress policy.",
-                            })
+                            findings.append(
+                                {
+                                    "AuditResultName": "MissingDefaultDenyIngressAndEgressNetworkPolicy",
+                                    "ResourceKind": kind,
+                                    "ResourceName": name,
+                                    "msg": "No default deny egress policy.",
+                                }
+                            )
                         # Allow all egress
                         if "Egress" in policy_types and spec_policy.get("egress") == [{}]:
-                            findings.append({
-                                "AuditResultName": "AllowAllEgressNetworkPolicyExists",
-                                "ResourceKind": kind,
-                                "ResourceName": name,
-                                "msg": "Allow all egress policy exists.",
-                            })
+                            findings.append(
+                                {
+                                    "AuditResultName": "AllowAllEgressNetworkPolicyExists",
+                                    "ResourceKind": kind,
+                                    "ResourceName": name,
+                                    "msg": "Allow all egress policy exists.",
+                                }
+                            )
             except Exception as e:
                 if self.verbosity > 1:
                     print(f"Error parsing {resource_file}: {e}")
         # Return as DataFrame with expected columns (even if empty)
         columns = [
-            "AuditResultName", "ResourceNamespace", "ResourceKind", "ResourceName", "Container",
-            "AnnotationValue", "MissingAnnotation", "Metadata", "IntroducedMajor", "IntroducedMinor",
-            "DeprecatedMajor", "DeprecatedMinor", "RemovedMajor", "RemovedMinor", "ResourceApiVersion",
-            "MountName", "MountPath", "MountReadOnly", "MountVolume", "MountVolumeHostPath", "msg"
+            "AuditResultName",
+            "ResourceNamespace",
+            "ResourceKind",
+            "ResourceName",
+            "Container",
+            "AnnotationValue",
+            "MissingAnnotation",
+            "Metadata",
+            "IntroducedMajor",
+            "IntroducedMinor",
+            "DeprecatedMajor",
+            "DeprecatedMinor",
+            "RemovedMajor",
+            "RemovedMinor",
+            "ResourceApiVersion",
+            "MountName",
+            "MountPath",
+            "MountReadOnly",
+            "MountVolume",
+            "MountVolumeHostPath",
+            "msg",
         ]
         df = pd.DataFrame(findings, columns=columns)
         return df
