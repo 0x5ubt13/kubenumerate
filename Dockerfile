@@ -80,13 +80,6 @@ RUN curl -sL https://aka.ms/InstallAzureCLIDeb | bash && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
-# Install kubeaudit
-RUN KUBEAUDIT_VERSION=$(curl -s https://api.github.com/repos/Shopify/kubeaudit/releases/latest | \ 
-        jq -r '.tag_name') && \
-    curl -fsSL "https://github.com/Shopify/kubeaudit/releases/download/${KUBEAUDIT_VERSION}/kubeaudit_${KUBEAUDIT_VERSION#v}_linux_amd64.tar.gz" | \
-    tar -xz -C /usr/local/bin kubeaudit && \
-    chmod +x /usr/local/bin/kubeaudit
-
 # Install Trivy
 RUN TRIVY_VERSION=$(curl -s https://api.github.com/repos/aquasecurity/trivy/releases/latest | \ 
         jq -r '.tag_name') && \

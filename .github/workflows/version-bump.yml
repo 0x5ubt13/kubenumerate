@@ -1,0 +1,69 @@
+name: Version Bump
+
+on:
+  push:
+    branches: [ main ]
+    paths-ignore:
+      - 'VERSION'
+      - '.github/workflows/version-bump.yml'
+
+jobs:
+  bump-version:
+    name: Bump Version
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        fetch-depth: 0
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.12'
+    
+    - name: Configure Git
+      run: |
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+    
+    - name: Get current version
+      id: current_version
+      run: |
+        CURRENT_VERSION=$(python version.py)
+        echo "current_version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+    
+    - name: Bump patch version
+      id: new_version
+      run: |
+        # Extract version components
+        IFS='.' read -ra VERSION_PARTS <<< "${{ steps.current_version.outputs.current_version }}"
+        MAJOR="${VERSION_PARTS[0]}"
+        MINOR="${VERSION_PARTS[1]}"
+        
+        # Handle patch version (remove -dev suffix if present)
+        PATCH_PART="${VERSION_PARTS[2]}"
+        if [[ $PATCH_PART == *"-dev"* ]]; then
+          PATCH=$(echo $PATCH_PART | cut -d'-' -f1)
+        else
+          PATCH=$PATCH_PART
+        fi
+        
+        # Increment patch version
+        NEW_PATCH=$((PATCH + 1))
+        NEW_VERSION="${MAJOR}.${MINOR}.${NEW_PATCH}-dev"
+        
+        echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
+        echo "NEW_VERSION=$NEW_VERSION" >> $GITHUB_ENV
+    
+    - name: Update VERSION file
+      run: |
+        echo "${{ steps.new_version.outputs.new_version }}" > VERSION
+    
+    - name: Commit and push version bump
+      run: |
+        git add VERSION
+        git commit -m "Bump version to ${{ steps.new_version.outputs.new_version }} [skip ci]"
+        git push 
