@@ -108,7 +108,7 @@ class TestVersionManagement:
              patch('version.get_version_from_file', return_value=None), \
              patch('version.get_version_from_setup', return_value=None):
             
-            assert get_version() == '1.3.0-dev'  # Default fallback
+            assert get_version() == '2.0.0'  # Default fallback
 
     def test_update_version_file(self):
         """Test updating VERSION file"""
