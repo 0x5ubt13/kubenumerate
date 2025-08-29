@@ -48,7 +48,7 @@ jobs:
     
     - name: Run type checking
       run: |
-        mypy kubenumerate.py --ignore-missing-imports
+        mypy kubenumerate.py --ignore-missing-imports --install-types --non-interactive 
     
     - name: Run security scanning
       run: |
