@@ -32,7 +32,7 @@ Currently included tools:
                |     |/  5. -----
                +-----+  6. -----
 	             Kubenumerate
-	          By 0x5ubt13 v1.2.0
+	          By 0x5ubt13 v2.0.0
 
     usage: kubenumerate.py [-h] [--cheatsheet] [--dry-run] [--excel-out EXCEL_OUT] [--kubeaudit-file KUBEAUDIT_FILE]
                        [--kubeconfig KUBECONFIG] [--namespace NAMESPACE] [--output OUTPUT] [--trivy-file TRIVY_FILE]

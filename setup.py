@@ -11,7 +11,7 @@ try:
     from version import get_version
 except ImportError:
     def get_version():
-        return "1.3.0-dev"
+        return "2.0.0"
 
 # Read the README file
 def read_readme():
@@ -27,7 +27,7 @@ setup(
     name="kubenumerate",
     version=get_version(),
     author="Subtle",
-    author_email="subtle@example.com",
+    author_email="5ubt13@protonmail.com",
     description="A comprehensive Kubernetes security auditing tool",
     long_description=read_readme(),
     long_description_content_type="text/markdown",
@@ -48,7 +48,7 @@ setup(
         "Topic :: Security",
         "Topic :: System :: Systems Administration",
     ],
-    python_requires=">=3.8",
+    python_requires=">=3.12",
     install_requires=read_requirements(),
     extras_require={
         "dev": [

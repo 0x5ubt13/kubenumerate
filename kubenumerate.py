@@ -26,7 +26,7 @@ try:
 except ImportError:
     # Fallback if version.py is not available
     def get_version() -> str:
-        return "1.3.0-dev"
+        return "2.0.0"
 
 
 class Kubenumerate:
@@ -2440,7 +2440,6 @@ class Kubenumerate:
         Parse kubectl output (pods, deployments, etc.) and generate a DataFrame with the columns expected by the
         kubeaudit check methods. This replaces the need for kubeaudit output.
         """
-        import pandas as pd
 
         findings = []
         # Static mappings for deprecated APIs and sensitive mount paths

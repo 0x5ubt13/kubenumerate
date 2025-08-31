@@ -65,7 +65,7 @@ jobs:
           chmod +x kubenumerate-${{ steps.version.outputs.version }}.py
           
           # Or use Docker
-          docker pull ${{ secrets.DOCKER_USERNAME }}/kubenumerate:${{ steps.version.outputs.version }}
+          docker pull gagarter/kubenumerate:${{ steps.version.outputs.version }}
           ```
         draft: false
         prerelease: false

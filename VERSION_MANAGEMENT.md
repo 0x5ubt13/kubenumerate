@@ -127,7 +127,7 @@ version = {attr = "version.get_version"}
 **Priority**: Lowest
 **Use Case**: Emergency fallback
 
-If no other version source is available, the system falls back to `"1.3.0-dev"`.
+If no other version source is available, the system falls back to `"2.0.0"`.
 
 ## CI/CD Integration
 
