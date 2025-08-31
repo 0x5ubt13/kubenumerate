@@ -11,6 +11,9 @@ env:
   PYTHON_VERSION: '3.12'
   KUBENUMERATE_VERSION: ${{ github.ref_name }}
 
+permissions:
+  security-events: write
+
 jobs:
   test:
     name: Test
@@ -196,3 +199,6 @@ jobs:
       if: always()
       with:
         sarif_file: 'trivy-results.sarif' 
+        category: 'Trivy Vulnerability Scan'
+      env: 
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
