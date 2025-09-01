@@ -67,7 +67,13 @@ def get_version_from_git_commit() -> Optional[str]:
         if count == "0":
             return tag
         else:
-            return f"{tag}-dev.{count}+{commit_hash}"
+            try:
+                major, minor, patch = map(int, tag.split('.'))
+                patch += 1
+                return f"{major}.{minor}.{patch}"
+            except ValueError:
+                # Fallback for non-semver tags
+                return f"{tag}-dev.{count}+{commit_hash}"
     except (subprocess.CalledProcessError, FileNotFoundError):
         return None
 
