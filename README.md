@@ -34,11 +34,9 @@ Currently included tools:
 	             Kubenumerate
 	          By 0x5ubt13 v2.0.0
 
-    usage: kubenumerate.py [-h] [--cheatsheet] [--dry-run] [--excel-out EXCEL_OUT] [--kubeaudit-file KUBEAUDIT_FILE]
-                       [--kubeconfig KUBECONFIG] [--namespace NAMESPACE] [--output OUTPUT] [--trivy-file TRIVY_FILE]
-                       [--verbosity VERBOSITY]
+    usage: kubenumerate.py [-h] [--cheatsheet] [--dry-run] [--excel-out EXCEL_OUT] [--kubeconfig KUBECONFIG][--namespace NAMESPACE] [--output OUTPUT] [--trivy-file TRIVY_FILE] [--verbosity VERBOSITY]
 
-    Uses local kubeconfig file to launch kubeaudit, kube-bench, kubectl, trivy, and KubiScan and parses all useful output to excel.
+    Uses local kubeconfig file to launch kubectl, trivy and KubiScan and parses all useful output to excel.
     
     options:
       -h, --help            show this help message and exit
@@ -46,9 +44,6 @@ Currently included tools:
       --dry-run, -d         Don't contact the Kubernetes API - do all work locally
       --excel-out EXCEL_OUT, -e EXCEL_OUT
                             Select a different name for your excel file. Default: kubenumerate_results_v1_0.xlsx
-      --kubeaudit-file KUBEAUDIT_FILE, -f KUBEAUDIT_FILE
-                            Select an input kubeaudit json file to parse instead of running kubeaudit using your
-                            kubeconfig file.
       --kubeconfig KUBECONFIG, -k KUBECONFIG
                             Select a specific Kubeconfig file you want to use
       --namespace NAMESPACE, -n NAMESPACE
@@ -62,14 +57,14 @@ Currently included tools:
     
 ## Installation (containerised version available below if you don't want to keep this on your system)
 
-    git clone https://github.com/0x5ubt13/kubenumerate.git
-    cd kubenumerate
-    python3 -m venv ./venv
-    source ./venv/bin/activate
-    pip install -r requirements.txt
-    chmod +x kubenumerate.py
-    sudo ln -s "$(pwd)"/kubenumerate.py /usr/bin/kubenumerate # Or anywhere else in your $PATH, or add to your PATH so no sudo is involved
-    kubenumerate -h
+    git clone https://github.com/0x5ubt13/kubenumerate.git && \ 
+    cd kubenumerate && \ 
+    python3 -m venv venv && \ 
+    source venv/bin/activate && \ 
+    pip install -r requirements.txt && \ 
+    echo '#!/bin/bash\nsource "$(pwd)/venv/bin/activate"\nexec python3 "$(pwd)/kubenumerate.py" "$@"' > kubenumerate.sh && \ 
+    chmod +x kubenumerate.sh && \ 
+    sudo ln -s "$(pwd)/kubenumerate.sh" /usr/local/bin/kubenumerate
 
 ## Examples
 
@@ -77,9 +72,9 @@ Run using your kubeconfig file (simply call the script!)
     
     kubenumerate
 
-Run locally using extracted kubeaudit.json and pods.json (no kubeconfig file needed)
+Run locally using extracted pods.json (no kubeconfig file needed)
 
-    kubenumerate -o ./kubenumerate_out/dev_cluster -f kubeaudit-dev.json -t pods-dev.json --dry-run
+    kubenumerate -o ./kubenumerate_out/dev_cluster -t pods-dev.json --dry-run
 
 ## Containerised version
 
