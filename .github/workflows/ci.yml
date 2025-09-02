@@ -158,7 +158,7 @@ jobs:
         echo "version=$VERSION" >> $GITHUB_OUTPUT
     
     - name: Create Release
-      uses: actions/create-release@v3
+      uses: actions/create-release@v4
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
@@ -168,7 +168,7 @@ jobs:
         prerelease: false
     
     - name: Upload release assets
-      uses: actions/upload-release-asset@v3
+      uses: actions/upload-release-asset@v4
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:

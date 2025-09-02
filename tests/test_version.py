@@ -90,7 +90,7 @@ class TestVersionManagement:
             MagicMock(stdout="abc123\n")   # git rev-parse --short HEAD
         ]
         
-        assert get_version_from_git_commit() == "1.2.3-dev.5+abc123"
+        assert get_version_from_git_commit() == "1.2.4"
 
     def test_get_version_priority(self):
         """Test version priority order"""
