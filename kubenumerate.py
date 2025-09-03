@@ -2098,21 +2098,44 @@ class Kubenumerate:
         # Otherwise, return new vars
         return {}, 0, False
 
-    def run_trivy(self, image_name: str) -> Any:
-        """Run Trivy against the specified image"""
+    def run_trivy(self, image_name: str) -> Optional[Dict[str, Any]]:
+        """Run Trivy against the specified image and handle errors"""
 
         command = f"{self.trivy_bin} i -q --scanners vuln --severity HIGH,CRITICAL --format json {image_name}"
 
-        # Start the process
         try:
             process = subprocess.run(command.split(" "), stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=30)
-        except subprocess.TimeoutExpired:
-            # Return "error" string that will be used to abort further checks of the output
-            return "error"
 
-        # Process completed, get the output
-        trivy_output = process.stdout.decode("utf-8")
-        return json.loads(trivy_output)
+            # Check if process failed
+            if process.returncode != 0:
+                if self.verbosity > 1:
+                    print(f"Trivy failed on {image_name}: {process.stderr.decode()}")
+                return None
+
+            # Check for empty output
+            trivy_output = process.stdout.decode("utf-8").strip()
+            if not trivy_output:
+                if self.verbosity > 1:
+                    print(f"Empty trivy output for {image_name}")
+                return None
+
+            # Try to parse JSON output
+            try:
+                result: Dict[str, Any] = json.loads(trivy_output)
+                return result
+            except json.JSONDecodeError:
+                if self.verbosity > 1:
+                    print(f"Invalid JSON from trivy for {image_name}")
+                return None
+
+        except subprocess.TimeoutExpired:
+            if self.verbosity > 1:
+                print(f"Trivy timed out on {image_name}")
+            return None
+        except Exception as e:
+            if self.verbosity > 1:
+                print(f"Error running trivy on {image_name}: {str(e)}")
+            return None
 
     def trivy_parser(self, writer: Any) -> None:
         """Run trivy against every image in every container and save output to Excel file.
@@ -2232,7 +2255,9 @@ class Kubenumerate:
                             if self.verbosity > 1:
                                 print(f"Scanning image {image_name}")
                             vulnerabilities = self.run_trivy(image_name)
-                            if vulnerabilities == "error":
+                            if vulnerabilities is None:
+                                if self.verbosity > 1:
+                                    print(f"Skipping {image_name} due to trivy scan failure")
                                 continue
 
                             # Get number of CVEs
