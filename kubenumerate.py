@@ -697,6 +697,14 @@ class Kubenumerate:
         if self.dry_run:
             if self.verbosity > 0:
                 print(f'{self.cyan_text("[*]")} --dry-run flag detected. Not fetching kubeconfig file.')
+                if (self.pods_file != ""
+                and self.trivy_file is not None
+                and os.path.exists(self.trivy_file)):
+                    print(
+                        f'{self.cyan_text("[*]")} Using passed argument "{self.cyan_text(self.pods_file)}" file as input '
+                        f"file for all checks."
+                    )
+                    self.pods_file = self.trivy_file
         else:
             # Check which kubeconfig file will be used and print current context
             if self.args.kubeconfig is not None:
@@ -925,7 +933,7 @@ class Kubenumerate:
 
         # Kill switch for the flag --dry-run
         if self.dry_run:
-            print(f'{self.cyan_text("[*]")} --dry-run flag detected. Skipping launching gatherer tools.')
+            print(f'{self.cyan_text("[*]")} --dry-run flag detected. Skipping launching kubectl.')
 
             # Creating empty kube-bench file for the script to work
             # self.kube_bench_file = "/tmp/kube-bench_dummy_file.json"
