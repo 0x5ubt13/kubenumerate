@@ -1016,9 +1016,9 @@ class Kubenumerate:
 
         # Write to Excel file all findings
         if self.verbosity > 0:
-            print(f'\n{self.cyan_text("[*]")} ----- Parsing trivy output, please wait... -----')
+            print(f'\n{self.cyan_text("[*]")} ----- Parsing output, please wait... -----')
         # Check versions difference
-        self.kubernetes_version_check()
+        self.kubernetes_version_check() #TODO: make sure it works with the dry-run flag.
         # Generate local kubeaudit-equivalent findings from kubectl output
         kubeaudit_df = self.generate_kubeaudit_equivalent_df_from_kubectl()
         # with open(self.kube_bench_file, "r") as kube_bench_f:
@@ -1355,9 +1355,9 @@ class Kubenumerate:
             )
             self.colour_cells_and_save_to_excel(
                 "AppArmor Annotation - Disabled",
-                "AppArmor is a Mandatory Access Control (MAC) system used by Linux. "
-                "It is enabled by adding container.apparmor.security.beta.kubernetes.io/[container name] as a pod-level"
-                " annotation and setting its value to either runtime/default or a profile (localhost/[profile name]).",
+                "AppArmor is a Mandatory Access Control (MAC) system used by Linux."
+                " AppArmor profiles can be specified at the pod level or container level."
+                " The container AppArmor profile takes precedence over the pod profile.",
                 "Apparmor - Disabled",
                 df_apparmor_disabled,
                 writer,
@@ -1367,35 +1367,36 @@ class Kubenumerate:
             if self.verbosity > 1:
                 print(f'[{self.cyan_text("*")}] "Apparmor - Disabled" not detected')
 
-        try:
-            # Apparmor annotation missing
-            df_apparmor_missing = df[df["AuditResultName"] == "AppArmorAnnotationMissing"]
-            df_apparmor_missing = df_apparmor_missing[
-                ["ResourceNamespace", "ResourceKind", "ResourceName", "Container", "MissingAnnotation", "msg"]
-            ]
-            df_apparmor_missing = df_apparmor_missing.rename(
-                columns={
-                    "ResourceNamespace": "Resource Namespace",
-                    "ResourceKind": "Resource Kind",
-                    "ResourceName": "Resource Name",
-                    "Container": "Affected Container",
-                    "MissingAnnotation": "Missing Annotation",
-                    "msg": "Recommendation",
-                }
-            )
-            self.colour_cells_and_save_to_excel(
-                "AppArmor - Missing Annotation",
-                "AppArmor is a Mandatory Access Control (MAC) system used by Linux. "
-                "It is enabled by adding container.apparmor.security.beta.kubernetes.io/[container name] as a pod-level"
-                " annotation and setting its value to either runtime/default or a profile (localhost/[profile name]).",
-                "Apparmor - Missing",
-                df_apparmor_missing,
-                writer,
-            )
-            self.hardened = False
-        except KeyError:
-            if self.verbosity > 1:
-                print(f'[{self.cyan_text("*")}] "Apparmor - Missing" not detected')
+        # Deprecated in version 1.30 - TODO: perhaps worth checking if cluster version < 1.30????
+        # try:
+        #     # Apparmor annotation missing
+        #     df_apparmor_missing = df[df["AuditResultName"] == "AppArmorAnnotationMissing"]
+        #     df_apparmor_missing = df_apparmor_missing[
+        #         ["ResourceNamespace", "ResourceKind", "ResourceName", "Container", "MissingAnnotation", "msg"]
+        #     ]
+        #     df_apparmor_missing = df_apparmor_missing.rename(
+        #         columns={
+        #             "ResourceNamespace": "Resource Namespace",
+        #             "ResourceKind": "Resource Kind",
+        #             "ResourceName": "Resource Name",
+        #             "Container": "Affected Container",
+        #             "MissingAnnotation": "Missing Annotation",
+        #             "msg": "Recommendation",
+        #         }
+        #     )
+        #     self.colour_cells_and_save_to_excel(
+        #         "AppArmor - Missing Annotation",
+        #         "AppArmor is a Mandatory Access Control (MAC) system used by Linux. "
+        #         "It is enabled by adding container.apparmor.security.beta.kubernetes.io/[container name] as a pod-level"
+        #         " annotation and setting its value to either runtime/default or a profile (localhost/[profile name]).",
+        #         "Apparmor - Missing",
+        #         df_apparmor_missing,
+        #         writer,
+        #     )
+        #     self.hardened = False
+        # except KeyError:
+        #     if self.verbosity > 1:
+        #         print(f'[{self.cyan_text("*")}] "Apparmor - Missing" not detected')
 
     def asat(self, df: pd.DataFrame, writer: Any) -> None:
         """Automount ServiceAccount Token True And Default SA"""
@@ -2488,16 +2489,25 @@ class Kubenumerate:
             # Add more as needed
         }
         sensitive_mount_paths = ["/etc", "/proc", "/var/run/docker.sock", "/var/run/cri.sock", "/root", "/var/lib"]
-        resource_files = glob.glob(f"{self.kubectl_path}*.json")
+        resource_files = []
+        if self.dry_run:
+            resource_files.append(self.trivy_file)
+            print(f'{self.cyan_text("[*]")} Dry run mode: using {self.trivy_file} as input')
+        else:
+            resource_files = glob.glob(f"{self.kubectl_path}*.json")
         for resource_file in resource_files:
+            print(f'{self.cyan_text("[*]")} Parsing {resource_file}...')
             if resource_file.endswith("all_output.json") or resource_file.endswith("cluster_version.txt"):
                 continue
             try:
+                print("debug: Line 2503")
                 with open(resource_file, "r") as f:
                     data = json.load(f)
+                    # print(f"debug: {data}")
                 items = data.get("items", [])
                 for item in items:
                     kind = item.get("kind", "")
+                    # print(f"debug: kind {kind}")
                     api_version = item.get("apiVersion", "")
                     metadata = item.get("metadata", {})
                     spec = item.get("spec", {})
@@ -2526,43 +2536,38 @@ class Kubenumerate:
                         )
                     # Pod-level and template checks
                     pod_spec = spec.get("template", {}).get("spec", spec)  # For controllers, use template.spec
+                    pod_security_ctx = pod_spec.get("securityContext", {})
+                    # print(f"debug: pod_spec {pod_spec}")
                     containers = pod_spec.get("containers", [])
                     # AppArmor, Seccomp, ASAT, Capabilities, Limits, Mounts, Non-root, Privesc, Privileged, RootFS
                     for container in containers:
+                        # print(f"debug: container {container}")
                         cname = container.get("name", "")
                         security_ctx = container.get("securityContext", {})
-                        # AppArmor
-                        apparmor_ann = None
                         anns = item.get("metadata", {}).get("annotations", {})
-                        if not anns and "template" in spec:
-                            anns = spec["template"].get("metadata", {}).get("annotations", {})
-                        apparmor_key = f"container.apparmor.security.beta.kubernetes.io/{cname}"
-                        if apparmor_key in anns:
-                            apparmor_ann = anns[apparmor_key]
-                            if apparmor_ann == "unconfined":
-                                findings.append(
-                                    {
-                                        "AuditResultName": "AppArmorDisabled",
-                                        "ResourceNamespace": namespace,
-                                        "ResourceKind": kind,
-                                        "ResourceName": name,
-                                        "Container": cname,
-                                        "AnnotationValue": apparmor_ann,
-                                        "msg": "AppArmor is disabled (unconfined).",
-                                    }
-                                )
-                        else:
+                        # AppArmor
+                        # ------ legacy method ------
+                        # apparmor_ann = None
+                        # # print (f"debug: anns {anns}")
+                        # # print(f"debug: spec {spec}")
+                        # if not anns and "template" in spec:
+                        #     anns = spec["template"].get("metadata", {}).get("annotations", {})
+                        # apparmor_key = f"container.apparmor.security.beta.kubernetes.io/{cname}"
+                        # print(f"debug: apparmor_key {apparmor_key}")
+                        # if apparmor_key not in anns:
+                        if "appArmorProfile" not in pod_security_ctx and "appArmorProfile" not in security_ctx:
+                            print("debug: AppArmor not in pod or container security context")
                             findings.append(
                                 {
-                                    "AuditResultName": "AppArmorAnnotationMissing",
+                                    "AuditResultName": "AppArmorNotSet",
                                     "ResourceNamespace": namespace,
                                     "ResourceKind": kind,
                                     "ResourceName": name,
                                     "Container": cname,
-                                    "MissingAnnotation": apparmor_key,
-                                    "msg": "AppArmor annotation missing.",
+                                    "msg": "AppArmor profile not set.",
                                 }
                             )
+
                         # Seccomp
                         seccomp_ann = anns.get("seccomp.security.alpha.kubernetes.io/pod")
                         if (
@@ -2676,11 +2681,10 @@ class Kubenumerate:
                                         }
                                     )
                         # Non-root
-                        pod_sc = pod_spec.get("securityContext", {})
                         run_as_non_root = security_ctx.get("runAsNonRoot")
                         run_as_user = security_ctx.get("runAsUser")
-                        pod_run_as_non_root = pod_sc.get("runAsNonRoot")
-                        pod_run_as_user = pod_sc.get("runAsUser")
+                        pod_run_as_non_root = pod_security_ctx.get("runAsNonRoot")
+                        pod_run_as_user = pod_security_ctx.get("runAsUser")
                         if run_as_non_root is None and pod_run_as_non_root is None:
                             findings.append(
                                 {
