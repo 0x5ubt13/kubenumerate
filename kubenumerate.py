@@ -697,11 +697,7 @@ class Kubenumerate:
         if self.dry_run:
             if self.verbosity > 0:
                 print(f'{self.cyan_text("[*]")} --dry-run flag detected. Not fetching kubeconfig file.')
-                if (
-                    self.pods_file != ""
-                    and self.trivy_file is not None
-                    and os.path.exists(self.trivy_file)
-                ):
+                if self.pods_file != "" and self.trivy_file is not None and os.path.exists(self.trivy_file):
                     print(
                         f'{self.cyan_text("[*]")} Using passed argument "{self.cyan_text(self.pods_file)}" file as input '
                         f"file for all checks."
