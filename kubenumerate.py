@@ -1018,7 +1018,7 @@ class Kubenumerate:
         if self.verbosity > 0:
             print(f'\n{self.cyan_text("[*]")} ----- Parsing output, please wait... -----')
         # Check versions difference
-        self.kubernetes_version_check() #TODO: make sure it works with the dry-run flag.
+        self.kubernetes_version_check()  # TODO: make sure it works with the dry-run flag.
         # Generate local kubeaudit-equivalent findings from kubectl output
         kubeaudit_df = self.generate_kubeaudit_equivalent_df_from_kubectl()
         # with open(self.kube_bench_file, "r") as kube_bench_f:
