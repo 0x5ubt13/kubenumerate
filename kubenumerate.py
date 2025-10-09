@@ -65,8 +65,10 @@ class Kubenumerate:
         kube_bench_file: str = "",
         kubeconfig_path: Optional[str] = None,
         kubectl_bin: str = "kubectl",
-        kubectl_path: str = "/tmp/kubenumerate_out/kubectl_output/",
-        kube_version: str = "v1.33.3",
+        kubectl_path: str = "",
+        kubectl_output_path: str = "/tmp/kubenumerate_out/kubectl_output/",
+        kubenumerate_path: str = str(Path(os.path.realpath(__file__)).parent.resolve()),
+        kube_version: str = "v1.34.1",
         kubiscan_path: str = "/tmp/kubiscan/",
         kubiscan_py: str = "",
         limits: bool = True,
@@ -123,6 +125,8 @@ class Kubenumerate:
         self.kubeconfig_path = kubeconfig_path
         self.kubectl_bin = kubectl_bin
         self.kubectl_path = kubectl_path
+        self.kubectl_output_path = kubectl_output_path
+        self.kubenumerate_path = kubenumerate_path
         self.kube_version = kube_version
         self.kubiscan_path = kubiscan_path
         self.kubiscan_py = kubiscan_py
@@ -168,6 +172,13 @@ class Kubenumerate:
             "-e",
             help="Select a different name for your excel file. Default: kubenumerate_results_v1_0.xlsx",
             default="kubenumerate_results_v1_0.xlsx",
+        )
+        parser.add_argument(
+            "--files",
+            "-f",
+            help="Instruct Kubenumerate to use an already generated "
+            "kubectl_output directory with all the necessary files to work offline "
+            "(pods.json, deployments.json, etc). Forces --dry-run mode.",
         )
         parser.add_argument("--kubeconfig", "-k", help="Select a specific Kubeconfig file you want to use")
         parser.add_argument(
@@ -638,7 +649,18 @@ class Kubenumerate:
         # Use args if passed
         if hasattr(self.args, "output") and self.args.output:
             self.out_path = f"{os.path.abspath(self.args.output)}/"
-            self.kubectl_path = f"{os.path.abspath(self.args.output)}/kubectl_output/"
+
+        if not hasattr(self.args, "files") or self.args.files is None:
+            self.kubectl_output_path = f"{os.path.abspath(self.args.output)}/kubectl_output/"
+        else:
+            print(f'{self.cyan_text("[*]")} --files flag detected. Using existing kubectl output files and '
+                  f'forcing --dry-run mode.')
+            self.kubectl_output_path = os.path.abspath(self.args.files)
+            self.dry_run = True
+            if not os.path.exists(self.kubectl_output_path):
+                os.makedirs(self.kubectl_output_path)
+                if self.verbosity > 0:
+                    print(f'{self.green_text("[+]")} Directory "{self.cyan_text(self.kubectl_output_path)}" created successfully.')
 
         if hasattr(self.args, "namespace") and self.args.namespace != "-A":
             self.namespace = f"-n {self.args.namespace}"
@@ -668,7 +690,7 @@ class Kubenumerate:
                 with open(self.trivy_file, "r") as f:
                     self.pods = json.loads(f.read())
         else:
-            self.pods_file = str(os.path.join(self.kubectl_path, "pods.json"))
+            self.pods_file = str(os.path.join(self.kubectl_output_path, "pods.json"))
 
         # Check path exists and create it if not
         try:
@@ -684,19 +706,21 @@ class Kubenumerate:
         # Do the same for the kubectl output folder
         if not self.dry_run:
             try:
-                os.makedirs(self.kubectl_path)
+                os.makedirs(self.kubectl_output_path)
                 if self.verbosity > 0:
                     print(
-                        f'{self.green_text("[+]")} Directory "{self.cyan_text(self.kubectl_path)}" '
+                        f'{self.green_text("[+]")} Directory "{self.cyan_text(self.kubectl_output_path)}" '
                         f"created successfully."
                     )
             except OSError:
                 if self.verbosity > 0:
-                    print(f'Using existing "{self.cyan_text(self.kubectl_path)}" folder for all kubectl output.')
+                    print(f'{self.green_text("[+]")} Using existing "{self.cyan_text(self.kubectl_output_path)}" folder for all kubectl output.')
 
         if self.dry_run:
             if self.verbosity > 0:
                 print(f'{self.cyan_text("[*]")} --dry-run flag detected. Not fetching kubeconfig file.')
+                if self.kubectl_output_path is not None and os.path.exists(self.kubectl_output_path):
+                    print(f'{self.cyan_text("[*]")} Using existing "{self.cyan_text(self.kubectl_output_path)}" folder for all kubectl output.')
                 if self.pods_file != "" and self.trivy_file is not None and os.path.exists(self.trivy_file):
                     print(
                         f'{self.cyan_text("[*]")} Using passed argument "{self.cyan_text(self.pods_file)}" file as input '
@@ -818,7 +842,7 @@ class Kubenumerate:
             cluster_version_stdout, cluster_version_stderr = cluster_version_process.communicate()
 
             self.cluster_version = str(self.extract_version(cluster_version_stdout))
-            with open(f"{self.kubectl_path}cluster_version.txt", "w") as f:
+            with open(f"{self.kubectl_output_path}cluster_version.txt", "w") as f:
                 f.write(self.cluster_version)
 
         except Exception as e:
@@ -826,8 +850,8 @@ class Kubenumerate:
             print(f'{self.red_text("[-]")} Error detected while launching `kubectl version`: {e}')
 
         # Get all yaml and json about valid resources
-        kubectl_json_file = f"{self.kubectl_path}all_output.json"
-        kubectl_yaml_file = f"{self.kubectl_path}all_output.yaml"
+        kubectl_json_file = f"{self.kubectl_output_path}all_output.json"
+        kubectl_yaml_file = f"{self.kubectl_output_path}all_output.yaml"
 
         if not os.path.exists(kubectl_json_file):
             Path.touch(Path(kubectl_json_file), 0o644)
@@ -859,16 +883,16 @@ class Kubenumerate:
             for i, resource in enumerate(resources):
                 self.show_status_bar(i + 1, "resources", total_resources, start=start)
                 # Skip if it already exists
-                if os.path.exists(f"{self.kubectl_path}{resource}.json"):
+                if os.path.exists(f"{self.kubectl_output_path}{resource}.json"):
                     if self.verbosity > 0:
                         print(
-                            f'{self.yellow_text("[!]")} "{self.kubectl_path}{resource}.json" already exists in the '
+                            f'{self.yellow_text("[!]")} "{self.kubectl_output_path}{resource}.json" already exists in the '
                             f"system. Skipping..."
                         )
                     continue
                 try:
-                    Path.touch(Path(f"{self.kubectl_path}{resource}.json"), 0o644)
-                    Path.touch(Path(f"{self.kubectl_path}{resource}.yaml"), 0o644)
+                    Path.touch(Path(f"{self.kubectl_output_path}{resource}.json"), 0o644)
+                    Path.touch(Path(f"{self.kubectl_output_path}{resource}.yaml"), 0o644)
 
                     command = f"{self.kubectl_bin} get {resource} {self.namespace} -o json"
                     process = subprocess.Popen(command.split(" "), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -892,8 +916,8 @@ class Kubenumerate:
                     skipped += 1
                     continue
 
-                Path.touch(Path(f"{self.kubectl_path}{resource}.json"), 0o644)
-                with open(f"{self.kubectl_path}{resource}.json", "w") as f:
+                Path.touch(Path(f"{self.kubectl_output_path}{resource}.json"), 0o644)
+                with open(f"{self.kubectl_output_path}{resource}.json", "w") as f:
                     # Check to avoid creating empty list file
                     contents_str = json.dumps(contents, indent=4)
                     f.write(contents_str)
@@ -908,8 +932,8 @@ class Kubenumerate:
                 stdout, stderr = process.communicate()
 
                 # Save the output to its own yaml file
-                Path.touch(Path(f"{self.kubectl_path}{resource}.yaml"), 0o644)
-                with open(f"{self.kubectl_path}{resource}.yaml", "w") as f:
+                Path.touch(Path(f"{self.kubectl_output_path}{resource}.yaml"), 0o644)
+                with open(f"{self.kubectl_output_path}{resource}.yaml", "w") as f:
                     f.write(stdout.decode("utf-8"))
 
                 # And append to the catch-all file for global queries
@@ -985,6 +1009,7 @@ class Kubenumerate:
                 f"all you need for {self.cyan_text('Kubenumerate')} to work with the following one-liner:"
             )
             print(
+                # TODO: update cheatsheet to include all kubectl calls
                 f'{self.cyan_text("kubectl")} get po {self.green_text("-A -o")} json {self.cyan_text(">")}'
                 f'{self.yellow_text("pods.json")}; {self.cyan_text("echo")} "Done"\n\n'
                 f'Then from your host:\n{self.cyan_text("scp")} {self.green_text("-i")} '
@@ -1062,8 +1087,8 @@ class Kubenumerate:
     def check_roles(self) -> None:
         if self.dry_run:
             print(
-                f'{self.cyan_text("[*]")} --dry-run flag detected. Using current directory to fetch json files'
-                f"needed to run ExtensiveRoleCheck.py."
+                f'{self.cyan_text("[*]")} --dry-run flag detected. Using {self.kubectl_output_path} directory to fetch json files'
+                f' needed to run ExtensiveRoleCheck.py.'
             )
             self.run_extensive_role_check()
             return
@@ -1073,15 +1098,16 @@ class Kubenumerate:
         """Run ExtensiveRoleCheck if not connected to the cluster"""
 
         role_check_out_path = f"{self.out_path}ExtensiveRoleCheck_output.txt"
-        extensive_role_check_file_path = "ExtensiveRoleCheck.py"
+        extensive_role_check_file_path = f"{self.kubenumerate_path}/ExtensiveRoleCheck.py"
         try:
             command = (
                 f"{self.py_bin} {extensive_role_check_file_path}"
-                f" --clusterRole clusterroles.json"
-                f" --role roles.json"
-                f" --rolebindings rolebindings.json"
-                f" --clusterrolebindings clusterrolebindings.json"
-                f" --pods pods.json"
+                f" --clusterRole {self.kubectl_output_path}/clusterroles.json"
+                f" --role {self.kubectl_output_path}/roles.json"
+                f" --rolebindings {self.kubectl_output_path}/rolebindings.json"
+                f" --clusterrolebindings {self.kubectl_output_path}/clusterrolebindings.json"
+                f" --pods {self.kubectl_output_path}/pods.json"
+                f" --outputjson {role_check_out_path}"
             ).split(" ")
             process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             stdout, stderr = process.communicate()
@@ -1094,7 +1120,8 @@ class Kubenumerate:
                 print(
                     f'{self.cyan_text("[*]")} Ensure all files that the script reads are sane. '
                     f"Perhaps your role does not have enough permissions to get Roles, RoleBindings, ClusterRoles, "
-                    f"ClusterRoleBindings, or Pods"
+                    f"ClusterRoleBindings, or Pods.\n"
+                    f"If otherwise the script is screaming at permissions, it ran fine. Your output should be ready."
                 )
 
             # Save the output to its own file
@@ -2410,7 +2437,7 @@ class Kubenumerate:
 
         # Suggest checking RBAC's output
         if self.sus_rbac:
-            if self.args.dry_run:
+            if self.dry_run:
                 print(f'\t{self.yellow_text("[!]")} Check ExtensiveRoleCheck\'s output')
             else:
                 print(f'\t{self.yellow_text("[!]")} Check KubiScan\'s output provided at {self.out_path}kubiscan.out')
@@ -2482,21 +2509,39 @@ class Kubenumerate:
             ("extensions/v1beta1", "DaemonSet"): (1, 2, 1, 9, 1, 16),
             ("extensions/v1beta1", "ReplicaSet"): (1, 2, 1, 9, 1, 16),
             ("extensions/v1beta1", "Ingress"): (1, 2, 1, 14, 1, 22),
-            # Add more as needed
+            # Added as of 1.34.1:
+            ("policy/v1beta1", "PodDisruptionBudget"): (1, 5, 1, 21, 1, 25),
+            ("policy/v1beta1", "PodSecurityPolicy"): (1, 3, 1, 21, 1, 25),
+            ("autoscaling/v2beta1", "HorizontalPodAutoscaler"): (1, 6, 1, 19, 1, 25),
+            ("autoscaling/v2beta2", "HorizontalPodAutoscaler"): (1, 12, 1, 23, 1, 26),
+            ("batch/v1beta1", "CronJob"): (1, 8, 1, 21, 1, 25),
+            ("networking.k8s.io/v1beta1", "Ingress"): (1, 14, 1, 19, 1, 22),
+            ("networking.k8s.io/v1beta1", "IngressClass"): (1, 18, 1, 19, 1, 22),
+            ("discovery.k8s.io/v1beta1", "EndpointSlice"): (1, 16, 1, 21, 1, 25),
+            ("apiextensions.k8s.io/v1beta1", "CustomResourceDefinition"): (1, 7, 1, 16, 1, 22),
+            ("admissionregistration.k8s.io/v1beta1", "MutatingWebhookConfiguration"): (1, 9, 1, 16, 1, 22),
+            ("admissionregistration.k8s.io/v1beta1", "ValidatingWebhookConfiguration"): (1, 9, 1, 16, 1, 22),
+            ("scheduling.k8s.io/v1beta1", "PriorityClass"): (1, 11, 1, 14, 1, 17),
+            ("coordination.k8s.io/v1beta1", "Lease"): (1, 11, 1, 14, 1, 17),
+            ("resource.k8s.io/v1beta1", "ResourceClaim"): (1, 33, 1, 33, 1, 34),
+            ("resource.k8s.io/v1beta1", "ResourceSlice"): (1, 33, 1, 33, 1, 34),
+            # TODO: To revisit in future versions to either update, or:
+            # TODO: Implement a dynamic `k get --raw /apis` check so that we don't need to update this manually
         }
         sensitive_mount_paths = ["/etc", "/proc", "/var/run/docker.sock", "/var/run/cri.sock", "/root", "/var/lib"]
         resource_files = []
         if self.dry_run:
+            self.find_pods_file_dry_run()
+            # print(f"Debug: self.trivy_file = {self.trivy_file}")
             resource_files.append(self.trivy_file)
             print(f'{self.cyan_text("[*]")} Dry run mode: using {self.trivy_file} as input')
         else:
-            resource_files = glob.glob(f"{self.kubectl_path}*.json")
+            resource_files = glob.glob(f"{self.kubectl_output_path}*.json")
         for resource_file in resource_files:
             print(f'{self.cyan_text("[*]")} Parsing {resource_file}...')
             if resource_file.endswith("all_output.json") or resource_file.endswith("cluster_version.txt"):
                 continue
             try:
-                print("debug: Line 2503")
                 with open(resource_file, "r") as f:
                     data = json.load(f)
                     # print(f"debug: {data}")
@@ -2552,7 +2597,6 @@ class Kubenumerate:
                         # print(f"debug: apparmor_key {apparmor_key}")
                         # if apparmor_key not in anns:
                         if "appArmorProfile" not in pod_security_ctx and "appArmorProfile" not in security_ctx:
-                            print("debug: AppArmor not in pod or container security context")
                             findings.append(
                                 {
                                     "AuditResultName": "AppArmorNotSet",
@@ -2858,6 +2902,28 @@ class Kubenumerate:
         ]
         df = pd.DataFrame(findings, columns=columns)
         return df
+
+    def find_pods_file_dry_run(self) -> None:
+        """Find the pods.json file in dry-run mode"""
+        # print("debug: find_pods_file_dry_run() called")
+        possible_files = [
+            "pods.json",
+            "pod.json",
+            "kubectl_get_pods.json",
+            "kubectl_get_pods_-A.json",
+            "kubectl_get_pods_--all-namespaces.json",
+        ]
+        found = False
+        for filename in possible_files:
+            filepath = f'{self.kubectl_output_path}/{filename}'
+            if os.path.isfile(filepath):
+                self.trivy_file = filepath
+                found = True
+                print(f'{self.green_text("[+]")} Found pods file for dry run: {self.cyan_text(filepath)}')
+                break
+        if not found:
+            print(f'{self.red_text("[-]")} Error: No pods.json file found in {self.cyan_text(self.kubectl_output_path)}.')
+            sys.exit(1)
 
 
 def main() -> None:
