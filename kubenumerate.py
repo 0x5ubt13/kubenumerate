@@ -1335,7 +1335,7 @@ class Kubenumerate:
         """AppArmor annotation disabled and missing"""
         try:
             # Apparmor disabled
-            df_apparmor_disabled = df[df["AuditResultName"] == "AppArmorDisabled"]
+            df_apparmor_disabled = df[df["AuditResultName"] == "AppArmorNotSet"]
             df_apparmor_disabled = df_apparmor_disabled[
                 ["ResourceNamespace", "ResourceKind", "ResourceName", "Container", "AnnotationValue", "msg"]
             ]
@@ -1350,7 +1350,7 @@ class Kubenumerate:
                 }
             )
             self.colour_cells_and_save_to_excel(
-                "AppArmor Annotation - Disabled",
+                "AppArmor - Not Set",
                 "AppArmor is a Mandatory Access Control (MAC) system used by Linux."
                 " AppArmor profiles can be specified at the pod level or container level."
                 " The container AppArmor profile takes precedence over the pod profile.",
