@@ -2502,16 +2502,12 @@ class Kubenumerate:
             f'\t  {self.green_text("By 0x5ubt13")} {self.yellow_text(f"v{self.version}")}\n'
         )
 
-    def generate_kubeaudit_equivalent_df_from_kubectl(self) -> pd.DataFrame:
-        """
-        Parse kubectl output (pods, deployments, etc.) and generate a DataFrame with the columns expected by the
-        kubeaudit check methods. This replaces the need for kubeaudit output.
-        """
+    def get_normalised_deprecated_apis_dict(self) -> Dict[Tuple[str, str], Tuple[int, int, int, int, int, int]]:
+        """Generate a list of tuples containing normalised (apiVersion, kind) for deprecated APIs"""
 
-        findings = []
-        # Static mappings for deprecated APIs and sensitive mount paths
-        deprecated_apis = {
-            # Example: (apiVersion, kind): (introduced_major, introduced_minor, deprecated_major, deprecated_minor, removed_major, removed_minor)
+        raw = {
+            # Example: (apiVersion, kind)
+            ("v1", "ComponentStatus"): (1, 0, 1, 19, None, None),
             ("apps/v1beta1", "Deployment"): (1, 6, 1, 9, 1, 16),
             ("extensions/v1beta1", "Deployment"): (1, 2, 1, 9, 1, 16),
             ("extensions/v1beta1", "DaemonSet"): (1, 2, 1, 9, 1, 16),
@@ -2536,17 +2532,33 @@ class Kubenumerate:
             # TODO: To revisit in future versions to either update, or:
             # TODO: Implement a dynamic `k get --raw /apis` check so that we don't need to update this manually
         }
+
+        return {self.normalise(api, kind): versions for (api, kind), versions in raw.items()}
+
+    def generate_kubeaudit_equivalent_df_from_kubectl(self) -> pd.DataFrame:
+        """
+        Parse kubectl output (pods, deployments, etc.) and generate a DataFrame with the columns expected by the
+        kubeaudit check methods. This replaces the need for kubeaudit output.
+        """
+
+        findings = []
+        # Static mappings for deprecated APIs and sensitive mount paths
+        deprecated_apis = self.get_normalised_deprecated_apis_dict()
         sensitive_mount_paths = ["/etc", "/proc", "/var/run/docker.sock", "/var/run/cri.sock", "/root", "/var/lib"]
         resource_files = []
         if self.dry_run:
             self.find_pods_file_dry_run()
             # print(f"Debug: self.trivy_file = {self.trivy_file}")
-            resource_files.append(self.trivy_file)
-            print(f'{self.cyan_text("[*]")} Dry run mode: using {self.trivy_file} as input')
+            if self.kubectl_output_path:
+                resource_files = glob.glob(f"{self.kubectl_output_path}/*.json")
+                print(f'{self.cyan_text("[*]")} Dry run mode: using {self.trivy_file} as input')
+            else:
+                resource_files.append(self.trivy_file)
+                print(f'{self.cyan_text("[*]")} Dry run mode: using {self.trivy_file} as input')
         else:
-            resource_files = glob.glob(f"{self.kubectl_output_path}*.json")
+            resource_files = glob.glob(f"{self.kubectl_output_path}/*.json")
         for resource_file in resource_files:
-            print(f'{self.cyan_text("[*]")} Parsing {resource_file}...')
+            # print(f'{self.cyan_text("[*]")} Parsing {resource_file}...')
             if resource_file.endswith("all_output.json") or resource_file.endswith("cluster_version.txt"):
                 continue
             try:
@@ -2563,16 +2575,17 @@ class Kubenumerate:
                     namespace = metadata.get("namespace", "default")
                     name = metadata.get("name", "")
                     # Deprecated API check
-                    if (api_version, kind) in deprecated_apis:
-                        intro_maj, intro_min, depr_maj, depr_min, rem_maj, rem_min = deprecated_apis[
-                            (api_version, kind)
-                        ]
+                    key = self.normalise(api_version, kind)
+                    # print("debug: key", key)
+                    if key in deprecated_apis:
+                        intro_maj, intro_min, depr_maj, depr_min, rem_maj, rem_min = deprecated_apis[key]
+                        print(f"debug: deprecated API found: {api_version}, {kind}")
                         findings.append(
                             {
                                 "AuditResultName": "DeprecatedAPIUsed",
-                                "ResourceNamespace": namespace,
+                                "ResourceNamespace": metadata.get("namespace", "default"),
                                 "ResourceKind": kind,
-                                "ResourceName": name,
+                                "ResourceName": metadata.get("name", ""),
                                 "IntroducedMajor": intro_maj,
                                 "IntroducedMinor": intro_min,
                                 "DeprecatedMajor": depr_maj,
@@ -2583,6 +2596,7 @@ class Kubenumerate:
                                 "msg": f"{kind} uses deprecated API version {api_version}.",
                             }
                         )
+
                     # Pod-level and template checks
                     pod_spec = spec.get("template", {}).get("spec", spec)  # For controllers, use template.spec
                     pod_security_ctx = pod_spec.get("securityContext", {})
@@ -2910,6 +2924,9 @@ class Kubenumerate:
         ]
         df = pd.DataFrame(findings, columns=columns)
         return df
+
+    def normalise(self, api_version: str, kind: str) -> tuple[str, str]:
+        return api_version.strip().lower(), kind.strip()
 
     def find_pods_file_dry_run(self) -> None:
         """Find the pods.json file in dry-run mode"""
