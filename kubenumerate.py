@@ -653,14 +653,18 @@ class Kubenumerate:
         if not hasattr(self.args, "files") or self.args.files is None:
             self.kubectl_output_path = f"{os.path.abspath(self.args.output)}/kubectl_output/"
         else:
-            print(f'{self.cyan_text("[*]")} --files flag detected. Using existing kubectl output files and '
-                  f'forcing --dry-run mode.')
+            print(
+                f'{self.cyan_text("[*]")} --files flag detected. Using existing kubectl output files and '
+                f"forcing --dry-run mode."
+            )
             self.kubectl_output_path = os.path.abspath(self.args.files)
             self.dry_run = True
             if not os.path.exists(self.kubectl_output_path):
                 os.makedirs(self.kubectl_output_path)
                 if self.verbosity > 0:
-                    print(f'{self.green_text("[+]")} Directory "{self.cyan_text(self.kubectl_output_path)}" created successfully.')
+                    print(
+                        f'{self.green_text("[+]")} Directory "{self.cyan_text(self.kubectl_output_path)}" created successfully.'
+                    )
 
         if hasattr(self.args, "namespace") and self.args.namespace != "-A":
             self.namespace = f"-n {self.args.namespace}"
@@ -714,13 +718,17 @@ class Kubenumerate:
                     )
             except OSError:
                 if self.verbosity > 0:
-                    print(f'{self.green_text("[+]")} Using existing "{self.cyan_text(self.kubectl_output_path)}" folder for all kubectl output.')
+                    print(
+                        f'{self.green_text("[+]")} Using existing "{self.cyan_text(self.kubectl_output_path)}" folder for all kubectl output.'
+                    )
 
         if self.dry_run:
             if self.verbosity > 0:
                 print(f'{self.cyan_text("[*]")} --dry-run flag detected. Not fetching kubeconfig file.')
                 if self.kubectl_output_path is not None and os.path.exists(self.kubectl_output_path):
-                    print(f'{self.cyan_text("[*]")} Using existing "{self.cyan_text(self.kubectl_output_path)}" folder for all kubectl output.')
+                    print(
+                        f'{self.cyan_text("[*]")} Using existing "{self.cyan_text(self.kubectl_output_path)}" folder for all kubectl output.'
+                    )
                 if self.pods_file != "" and self.trivy_file is not None and os.path.exists(self.trivy_file):
                     print(
                         f'{self.cyan_text("[*]")} Using passed argument "{self.cyan_text(self.pods_file)}" file as input '
@@ -1088,7 +1096,7 @@ class Kubenumerate:
         if self.dry_run:
             print(
                 f'{self.cyan_text("[*]")} --dry-run flag detected. Using {self.kubectl_output_path} directory to fetch json files'
-                f' needed to run ExtensiveRoleCheck.py.'
+                f" needed to run ExtensiveRoleCheck.py."
             )
             self.run_extensive_role_check()
             return
@@ -2915,14 +2923,16 @@ class Kubenumerate:
         ]
         found = False
         for filename in possible_files:
-            filepath = f'{self.kubectl_output_path}/{filename}'
+            filepath = f"{self.kubectl_output_path}/{filename}"
             if os.path.isfile(filepath):
                 self.trivy_file = filepath
                 found = True
                 print(f'{self.green_text("[+]")} Found pods file for dry run: {self.cyan_text(filepath)}')
                 break
         if not found:
-            print(f'{self.red_text("[-]")} Error: No pods.json file found in {self.cyan_text(self.kubectl_output_path)}.')
+            print(
+                f'{self.red_text("[-]")} Error: No pods.json file found in {self.cyan_text(self.kubectl_output_path)}.'
+            )
             sys.exit(1)
 
 
