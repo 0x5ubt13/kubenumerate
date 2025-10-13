@@ -2502,7 +2502,9 @@ class Kubenumerate:
             f'\t  {self.green_text("By 0x5ubt13")} {self.yellow_text(f"v{self.version}")}\n'
         )
 
-    def get_normalised_deprecated_apis_dict(self) -> Dict[Tuple[str, str], Tuple[int, int, int, int, int | None, int | None]]:
+    def get_normalised_deprecated_apis_dict(
+        self,
+    ) -> Dict[Tuple[str, str], Tuple[int, int, int, int, int | None, int | None]]:
         """Generate a list of tuples containing normalised (apiVersion, kind) for deprecated APIs"""
 
         raw = {
