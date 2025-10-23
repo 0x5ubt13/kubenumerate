@@ -34,25 +34,29 @@ Currently included tools:
 	             Kubenumerate
 	          By 0x5ubt13 v2.0.3
 
-    usage: kubenumerate.py [-h] [--cheatsheet] [--dry-run] [--excel-out EXCEL_OUT] [--kubeconfig KUBECONFIG][--namespace NAMESPACE] [--output OUTPUT] [--trivy-file TRIVY_FILE] [--verbosity VERBOSITY]
+    usage: kubenumerate.py [-h] [--cheatsheet] [--dry-run] [--excel-out EXCEL_OUT] [--files FILES] [--kubeconfig KUBECONFIG]
+                       [--namespace NAMESPACE] [--output OUTPUT] [--trivy-file TRIVY_FILE] [--verbosity VERBOSITY]
 
     Uses local kubeconfig file to launch kubectl, trivy and KubiScan and parses all useful output to excel.
-    
+
     options:
-      -h, --help            show this help message and exit
-      --cheatsheet, -c      Print commands to extract info from the cluster and work offline
-      --dry-run, -d         Don't contact the Kubernetes API - do all work locally
-      --excel-out EXCEL_OUT, -e EXCEL_OUT
+    -h, --help              show this help message and exit
+    --cheatsheet, -c        Print commands to extract info from the cluster and work offline
+    --dry-run, -d           Don't contact the Kubernetes API - do all work locally
+    --excel-out EXCEL_OUT, -e EXCEL_OUT
                             Select a different name for your excel file. Default: kubenumerate_results_v1_0.xlsx
-      --kubeconfig KUBECONFIG, -k KUBECONFIG
+    --files FILES, -f FILES
+                            Instruct Kubenumerate to use an already generated kubectl_output directory with all the necessary files to work
+                            offline (pods.json, deployments.json, etc). Forces --dry-run mode.
+    --kubeconfig KUBECONFIG, -k KUBECONFIG
                             Select a specific Kubeconfig file you want to use
-      --namespace NAMESPACE, -n NAMESPACE
+    --namespace NAMESPACE, -n NAMESPACE
                             Select a specific namespace to test, if your scope is restricted. Default: -A
-      --output OUTPUT, -o OUTPUT
-                            Select a different folder for all the output. Default: '/tmp/kubenumerate_out/'
-      --trivy-file TRIVY_FILE, -t TRIVY_FILE
+    --output OUTPUT, -o OUTPUT
+                            Select a different directory for all the output. Default: '/tmp/kubenumerate_out/'
+    --trivy-file TRIVY_FILE, -t TRIVY_FILE
                             Run trivy from a pods dump in json instead of running kubectl using your kubeconfig file
-      --verbosity VERBOSITY, -v VERBOSITY
+    --verbosity VERBOSITY, -v VERBOSITY
                             Select a verbosity level. (0 = quiet | 1 = default | 2 = verbose/debug)
     
 ## Installation (containerised version available below if you don't want to keep this on your system)
@@ -79,7 +83,10 @@ Run locally using extracted pods.json (no kubeconfig file needed)
 ## Containerised version
 
 If you don't want to install everything in your system, a containerised version is available at [Docker Hub: gagarter/kubenumerate](https://hub.docker.com/r/gagarter/kubenumerate).
-You will need to mount your `kubeconfig` file inside the container, then mount the desired output folder inside the container, and after running, it will dump all the output in the mounted folder. All this can be done with the following example commands:
+
+You will need to mount your `kubeconfig` file inside the container, along with any cloud file or env variable needed for the container to authenticate to a CSP, then mount the desired output directory inside the container, and after running, it will dump all the output in the mounted directory. 
+
+A basic example of how can this be done:
 
     # Create directory and prepare kubeconfig file and out directory
     mkdir /tmp/kubenumerate_out
@@ -101,7 +108,7 @@ You will need to mount your `kubeconfig` file inside the container, then mount t
 
 or, if you're using PowerShell on Windows:
 
-    # Create folder and prepare kubeconfig file and out directory
+    # Create directory and prepare kubeconfig file and out directory
     New-Item -Path "C:\tmp\kubenumerate_out" -ItemType Directory
     Copy-Item -Path "$env:USERPROFILE\.kube\config" -Destination "C:\tmp\config"
     icacls "C:\tmp\config" /grant Everyone:R

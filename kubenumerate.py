@@ -190,7 +190,7 @@ class Kubenumerate:
         parser.add_argument(
             "--output",
             "-o",
-            help="Select a different folder for all the output. Default: '/tmp/kubenumerate_out/'",
+            help="Select a different directory for all the output. Default: '/tmp/kubenumerate_out/'",
             default="/tmp/kubenumerate_out/",
         )
         parser.add_argument(
@@ -704,10 +704,10 @@ class Kubenumerate:
         except OSError:
             if self.verbosity > 0:
                 print(
-                    f'{self.green_text("[+]")} Using existing "{self.cyan_text(self.out_path)}" folder for all output.'
+                    f'{self.green_text("[+]")} Using existing "{self.cyan_text(self.out_path)}" directory for all output.'
                 )
 
-        # Do the same for the kubectl output folder
+        # Do the same for the kubectl output directory
         if not self.dry_run:
             try:
                 os.makedirs(self.kubectl_output_path)
@@ -719,7 +719,7 @@ class Kubenumerate:
             except OSError:
                 if self.verbosity > 0:
                     print(
-                        f'{self.green_text("[+]")} Using existing "{self.cyan_text(self.kubectl_output_path)}" folder for all kubectl output.'
+                        f'{self.green_text("[+]")} Using existing "{self.cyan_text(self.kubectl_output_path)}" directory for all kubectl output.'
                     )
 
         if self.dry_run:
@@ -727,7 +727,7 @@ class Kubenumerate:
                 print(f'{self.cyan_text("[*]")} --dry-run flag detected. Not fetching kubeconfig file.')
                 if self.kubectl_output_path is not None and os.path.exists(self.kubectl_output_path):
                     print(
-                        f'{self.cyan_text("[*]")} Using existing "{self.cyan_text(self.kubectl_output_path)}" folder for all kubectl output.'
+                        f'{self.cyan_text("[*]")} Using existing "{self.cyan_text(self.kubectl_output_path)}" directory for all kubectl output.'
                     )
                 if self.pods_file != "" and self.trivy_file is not None and os.path.exists(self.trivy_file):
                     print(
@@ -1022,7 +1022,7 @@ class Kubenumerate:
                 f'{self.yellow_text("pods.json")}; {self.cyan_text("echo")} "Done"\n\n'
                 f'Then from your host:\n{self.cyan_text("scp")} {self.green_text("-i")} '
                 f'{self.yellow_text("<rsa_id> <remote_user>")}@{self.yellow_text("<10.10.10.10>")}:'
-                f'{self.yellow_text("<folder>")}*.json .\n'
+                f'{self.yellow_text("<directory>")}*.json .\n'
             )
             print(
                 f'And finally use kubenumerate with the data you just extracted:\n{self.cyan_text("kubenumerate")} '
@@ -1253,7 +1253,7 @@ class Kubenumerate:
     #         print(f'{self.cyan_text("[*]")} Running kube-bench, please wait...')
 
     #     # TODO: I don't entirely like this logic. It should be:
-    #     #   if I know where the kube-bench release folder with the config and the binary is, use that.
+    #     #   if I know where the kube-bench release directory with the config and the binary is, use that.
     #     #   if not known, and not in /tmp (and thus not installed by kubenumeraga):
     #     #       try to find it
     #     #       if not found:
@@ -2231,7 +2231,7 @@ class Kubenumerate:
                 if self.verbosity > 0:
                     print(
                         f'{self.red_text("[-]")} It looks like this test was already run in the past.\nIf you want to '
-                        f"redo the assessment, select a different output folder, or run\n\t"
+                        f"redo the assessment, select a different output directory, or run\n\t"
                         f'{self.yellow_text(f"rm {self.pkl_recovery}")}'
                     )
                 break
