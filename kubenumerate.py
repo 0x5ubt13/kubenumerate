@@ -1444,9 +1444,10 @@ class Kubenumerate:
             )
             self.colour_cells_and_save_to_excel(
                 "Automount ServiceAccount Token True And Default ServiceAccount",
-                "Automounting a default service account would allow any compromised pod to run API commands "
-                "against the cluster. Either automounting should be disabled or a non-default service account with sane"
-                " permissions should be used.",
+                "Automounting a default service account, or a namespace service account with automounting not disabled "
+                "would allow any compromised pod to run API commands against the cluster with the same level of "
+                "privileges than the service account. Either automounting should be disabled in the namespace, service "
+                "account, or pod declarations, or a non-default service account with sane permissions should be used.",
                 "Automount SA",
                 df_automount_sa,
                 writer,
