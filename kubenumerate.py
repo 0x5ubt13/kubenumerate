@@ -1063,6 +1063,7 @@ class Kubenumerate:
             self.net_pols(kubeaudit_df, writer)
             self.non_root(kubeaudit_df, writer)
             self.privesc(kubeaudit_df, writer)
+            self.privileged(kubeaudit_df, writer)
             self.root_fs(kubeaudit_df, writer)
             self.seccomp(kubeaudit_df, writer)
             if self.verbosity > 0:
