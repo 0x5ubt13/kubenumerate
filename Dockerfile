@@ -137,7 +137,7 @@ RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir --user -r requirements.txt
 
 # Copy application files
-COPY --chown=subtle:subtle kubenumerate.py ExtensiveRoleCheck.py ./
+COPY --chown=subtle:subtle kubenumerate.py ExtensiveRoleCheck.py summary_table.py ./
 
 # Set entrypoint
 ENTRYPOINT ["python3", "kubenumerate.py"]

@@ -16,3 +16,4 @@ tornado~=6.5
 urllib3>=2.6.0
 wheel~=0.41.2
 xlsxwriter~=3.2.0
+python-docx~=1.1.0
