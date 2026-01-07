@@ -216,8 +216,7 @@ class Kubenumerate:
         )
         parser.add_argument(
             "--summary-output",
-            help="Specify the path for the summary Word document. "
-            "Default: {output_dir}/kubenumerate_summary.docx",
+            help="Specify the path for the summary Word document. " "Default: {output_dir}/kubenumerate_summary.docx",
         )
         self.args = parser.parse_args()
 
@@ -1098,11 +1097,14 @@ class Kubenumerate:
                 print(f'{self.green_text("[+]")} {self.cyan_text("Trivy")} successfully parsed.')
         if self.verbosity >= 0:
             print(f'{self.green_text("[+]")} Done! All output successfully saved to {self.cyan_text(self.excel_file)}.')
-        
+
         # Generate summary table by default (unless --skip-summary flag is used)
         if not self.args.skip_summary:
             from summary_table import generate_summary_table
-            summary_path = self.args.summary_output if self.args.summary_output else f"{self.out_path}kubenumerate_summary.docx"
+
+            summary_path = (
+                self.args.summary_output if self.args.summary_output else f"{self.out_path}kubenumerate_summary.docx"
+            )
             try:
                 generate_summary_table(kubeaudit_df, vuln_containers, summary_path, self.verbosity)
                 if self.verbosity >= 0:
@@ -2408,7 +2410,7 @@ class Kubenumerate:
             )
         else:
             print(f'{self.green_text("[+]")} No images found containing any high- or critical-risk issues')
-        
+
         return vuln_containers
 
     def raise_issues(self) -> None:
