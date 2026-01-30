@@ -63,16 +63,21 @@ Currently included tools:
     --summary-output SUMMARY_OUTPUT
                             Specify the path for the summary Word document. Default: {output_dir}/kubenumerate_summary.docx
     
-## Installation (containerised version available below if you don't want to keep this on your system)
+## Installation (pipx)
+
+    pipx install kubenumerate
+
+## Installation (from source)
 
     git clone https://github.com/0x5ubt13/kubenumerate.git && \ 
     cd kubenumerate && \ 
     python3 -m venv venv && \ 
     source venv/bin/activate && \ 
-    pip install -r requirements.txt && \ 
-    echo '#!/bin/bash\nsource "$(pwd)/venv/bin/activate"\nexec python3 "$(pwd)/kubenumerate.py" "$@"' > kubenumerate.sh && \ 
-    chmod +x kubenumerate.sh && \ 
-    sudo ln -s "$(pwd)/kubenumerate.sh" /usr/local/bin/kubenumerate
+    python -m pip install . && \ 
+    kubenumerate -h
+
+Note: kubenumerate orchestrates external tools such as kubectl, kubeaudit, kube-bench, trivy, kubiscan, jq, and wget.
+When you run it, it can prompt to install missing tools, but you can also install them manually beforehand.
 
 ## Examples
 

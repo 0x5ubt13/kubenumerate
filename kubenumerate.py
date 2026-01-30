@@ -1135,17 +1135,24 @@ class Kubenumerate:
         """Run ExtensiveRoleCheck if not connected to the cluster"""
 
         role_check_out_path = f"{self.out_path}ExtensiveRoleCheck_output.txt"
-        extensive_role_check_file_path = f"{self.kubenumerate_path}/ExtensiveRoleCheck.py"
         try:
-            command = (
-                f"{self.py_bin} {extensive_role_check_file_path}"
-                f" --clusterRole {self.kubectl_output_path}/clusterroles.json"
-                f" --role {self.kubectl_output_path}/roles.json"
-                f" --rolebindings {self.kubectl_output_path}/rolebindings.json"
-                f" --clusterrolebindings {self.kubectl_output_path}/clusterrolebindings.json"
-                f" --pods {self.kubectl_output_path}/pods.json"
-                f" --outputjson {role_check_out_path}"
-            ).split(" ")
+            command = [
+                self.py_bin,
+                "-m",
+                "ExtensiveRoleCheck",
+                "--clusterRole",
+                f"{self.kubectl_output_path}clusterroles.json",
+                "--role",
+                f"{self.kubectl_output_path}roles.json",
+                "--rolebindings",
+                f"{self.kubectl_output_path}rolebindings.json",
+                "--clusterrolebindings",
+                f"{self.kubectl_output_path}clusterrolebindings.json",
+                "--pods",
+                f"{self.kubectl_output_path}pods.json",
+                "--outputjson",
+                role_check_out_path,
+            ]
             process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             stdout, stderr = process.communicate()
 

@@ -9,6 +9,15 @@ import subprocess
 import re
 from pathlib import Path
 from typing import Optional
+from importlib import metadata
+
+
+def get_version_from_metadata() -> Optional[str]:
+    """Get version from installed package metadata."""
+    try:
+        return metadata.version("kubenumerate")
+    except metadata.PackageNotFoundError:
+        return None
 
 
 def get_version_from_git() -> Optional[str]:
@@ -123,12 +132,18 @@ def get_version_from_setup() -> Optional[str]:
 def get_version() -> str:
     """
     Get version using the following priority:
-    1. Environment variable KUBENUMERATE_VERSION
-    2. Git tag with commit info
-    3. VERSION file
-    4. setup.py/pyproject.toml
-    5. Default fallback
+    1. Installed package metadata
+    2. Environment variable KUBENUMERATE_VERSION
+    3. Git tag with commit info
+    4. VERSION file
+    5. setup.py/pyproject.toml
+    6. Default fallback
     """
+    # Try installed package metadata first (best for PyPI/pipx installs)
+    version = get_version_from_metadata()
+    if version:
+        return version
+
     # Try environment variable first
     version = get_version_from_env()
     if version:

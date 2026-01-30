@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=61.0", "wheel"]
+requires = ["setuptools>=61.0", "wheel", "setuptools_scm[toml]>=8.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -7,7 +7,7 @@ name = "kubenumerate"
 dynamic = ["version"]
 description = "A comprehensive Kubernetes security auditing tool"
 readme = "README.md"
-license = {text = "MIT"}
+license = {file = "LICENSE"}
 authors = [
     {name = "Subtle", email = "5ubt13@protonmail.com"}
 ]
@@ -32,12 +32,14 @@ classifiers = [
 ]
 requires-python = ">=3.12"
 dependencies = [
-    "pandas>=1.5.0",
-    "requests>=2.28.0",
-    "PyYAML>=6.0",
-    "packaging>=21.0",
-    "openpyxl>=3.0.0",
-    "xlrd>=2.0.0",
+    "colorama>=0.4.6",
+    "pandas>=2.2.2",
+    "requests>=2.32.3",
+    "PyYAML>=6.0.1",
+    "packaging>=24.0",
+    "openpyxl>=3.1.2",
+    "xlsxwriter>=3.2.0",
+    "python-docx>=1.1.0",
 ]
 
 [project.optional-dependencies]
@@ -56,15 +58,17 @@ Homepage = "https://github.com/0x5ubt13/kubenumerate"
 Documentation = "https://github.com/0x5ubt13/kubenumerate#readme"
 Repository = "https://github.com/0x5ubt13/kubenumerate"
 "Bug Tracker" = "https://github.com/0x5ubt13/kubenumerate/issues"
+Changelog = "https://github.com/0x5ubt13/kubenumerate/releases"
 
 [project.scripts]
 kubenumerate = "kubenumerate:main"
 
-[tool.setuptools.dynamic]
-version = {attr = "version.get_version"}
+[tool.setuptools_scm]
+version_scheme = "post-release"
+local_scheme = "no-local-version"
 
-[tool.setuptools.packages.find]
-include = ["kubenumerate", "ExtensiveRoleCheck", "formatter", "version"]
+[tool.setuptools]
+py-modules = ["kubenumerate", "ExtensiveRoleCheck", "formatter", "version"]
 
 [tool.black]
 line-length = 120

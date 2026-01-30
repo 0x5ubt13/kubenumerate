@@ -79,3 +79,5 @@ Thumbs.db
 role_audit.json
 cluster_role_audit.json
 test_issues_dict.txt
+enumeraga.code-workspace
+.github/copilot-instructions.md
