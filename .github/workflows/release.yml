@@ -4,6 +4,9 @@ on:
   push:
     tags: [ 'v*' ]
 
+permissions:
+  contents: write
+
 jobs:
   create-release:
     name: Create Release
@@ -27,10 +30,6 @@ jobs:
         echo "version=$VERSION" >> $GITHUB_OUTPUT
         echo "VERSION=$VERSION" >> $GITHUB_ENV
     
-    - name: Update VERSION file for release
-      run: |
-        echo "${{ steps.version.outputs.version }}" > VERSION
-    
     - name: Generate changelog
       id: changelog
       run: |
@@ -45,13 +44,10 @@ jobs:
         echo "$CHANGELOG" >> $GITHUB_OUTPUT
         echo "EOF" >> $GITHUB_OUTPUT
     
-    - name: Create Release
-      uses: actions/create-release@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    - name: Create GitHub Release
+      uses: softprops/action-gh-release@v2
       with:
-        tag_name: ${{ github.ref }}
-        release_name: Release ${{ steps.version.outputs.version }}
+        name: Release ${{ steps.version.outputs.version }}
         body: |
           ## Changes in this release
           
@@ -67,23 +63,5 @@ jobs:
           # Or use Docker
           docker pull gagarter/kubenumerate:${{ steps.version.outputs.version }}
           ```
-        draft: false
-        prerelease: false
-    
-    - name: Upload release assets
-      uses: actions/upload-release-asset@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        upload_url: ${{ steps.create_release.outputs.upload_url }}
-        asset_path: ./kubenumerate.py
-        asset_name: kubenumerate-${{ steps.version.outputs.version }}.py
-        asset_content_type: text/plain
-    
-    - name: Commit version update
-      run: |
-        git config --local user.email "action@github.com"
-        git config --local user.name "GitHub Action"
-        git add VERSION
-        git commit -m "Update VERSION for release ${{ steps.version.outputs.version }}"
-        git push 
+        files: |
+          kubenumerate.py
