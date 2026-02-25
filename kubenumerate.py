@@ -79,7 +79,7 @@ class Kubenumerate:
         pods_file: str = "",
         privesc: bool = False,
         privileged: bool = False,
-        py_bin: str = sys.executable,
+        py_bin: str = sys.executable or "python3",
         requisites: List[str] = [],
         sus_rbac: bool = False,
         trivy_bin: str = "",
@@ -777,11 +777,9 @@ class Kubenumerate:
             except Exception as e:
                 print(f'{self.red_text("[-]")} Error loading kubeconfig file: {e}')
 
-        # Ensure python3 binary is valid
-        if self.py_bin is None:
-            self.py_bin = shutil.which("python3") if sys.executable is None else sys.executable
-            if shutil.which(self.py_bin) is None:
-                self.py_bin = shutil.which("python")
+        # Ensure python binary is valid and always a concrete string
+        if not self.py_bin:
+            self.py_bin = sys.executable or shutil.which("python3") or shutil.which("python") or "python3"
 
         # Construct excel filename
         self.parse_excel_filename()
@@ -1003,7 +1001,8 @@ class Kubenumerate:
         """Class main method. Launch trivy and parse it (kubeaudit and kube-bench removed)"""
 
         # Abort immediately if python 3.11 is not being used
-        self.py_bin = "python3" if self.py_bin is None else self.py_bin  # Triple check python is valid
+        if not self.py_bin:
+            self.py_bin = "python3"
         python_version = (
             subprocess.run(f"{self.py_bin} --version".split(" "), check=True, capture_output=True, text=True)
             .stdout.split(" ")[1]
@@ -1182,11 +1181,21 @@ class Kubenumerate:
 
     def run_kubiscan(self) -> None:
         """Run KubiScan if connected to the cluster"""
-        if self.args.kubeconfig is not None:
-            self.kubiscan_py = f"{self.kubiscan_py} -co {self.args.kubeconfig}"
-
         try:
-            command = f"{self.py_bin} {self.kubiscan_py} -a".split(" ")
+            command: List[str]
+            if self.kubiscan_py and os.path.isfile(self.kubiscan_py):
+                command = [self.py_bin, self.kubiscan_py]
+            else:
+                kubiscan_bin = shutil.which("kubiscan")
+                if kubiscan_bin is None:
+                    print(f'{self.red_text("[-]")} Error while running {self.cyan_text("Kubiscan")}: binary not found')
+                    return
+                command = [kubiscan_bin]
+
+            if self.args.kubeconfig is not None:
+                command.extend(["-co", self.args.kubeconfig])
+
+            command.append("-a")
             process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
             stdout, stderr = process.communicate()
 

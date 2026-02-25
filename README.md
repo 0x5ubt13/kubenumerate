@@ -63,7 +63,7 @@ Currently included tools:
     --summary-output SUMMARY_OUTPUT
                             Specify the path for the summary Word document. Default: {output_dir}/kubenumerate_summary.docx
     
-## Installation (pipx)
+## Installation (pipx ✨)
 
     pipx install kubenumerate
 

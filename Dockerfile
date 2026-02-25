@@ -109,13 +109,19 @@ RUN KUBE_BENCH_URL=$(curl -s https://api.github.com/repos/aquasecurity/kube-benc
     rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
 # Install KubiScan
-RUN mkdir -p /tmp/kubiscan && \ 
-    KUBISCAN_URL=$(curl -s https://api.github.com/repos/cyberark/KubiScan/releases/latest | \
-        jq -r '.zipball_url') && \
-    wget -O /tmp/kubiscan/kubiscan.zip "$KUBISCAN_URL" && \
-    unzip /tmp/kubiscan/kubiscan.zip -d /tmp/kubiscan/ && \
-    chmod -R 755 /tmp/kubiscan && \
-    rm -f /tmp/kubiscan/kubiscan.zip
+RUN set -eux; \
+    mkdir -p /tmp/kubiscan /opt/kubiscan; \
+    KUBISCAN_URL=$(curl -s https://api.github.com/repos/cyberark/KubiScan/releases/latest | jq -r '.zipball_url'); \
+    wget -O /tmp/kubiscan/kubiscan.zip "$KUBISCAN_URL"; \
+    unzip /tmp/kubiscan/kubiscan.zip -d /tmp/kubiscan/; \
+    KUBISCAN_PY="$(find /tmp/kubiscan -type f -name KubiScan.py -print -quit)"; \
+    KUBISCAN_DIR="$(dirname "$KUBISCAN_PY")"; \
+    cp -a "$KUBISCAN_DIR"/. /opt/kubiscan/; \
+    chmod -R 755 /opt/kubiscan; \
+    if [ -f /opt/kubiscan/requirements.txt ]; then pip install --no-cache-dir -r /opt/kubiscan/requirements.txt; fi; \
+    printf '#!/usr/bin/env bash\nexec python3 /opt/kubiscan/KubiScan.py "$@"\n' > /usr/local/bin/kubiscan; \
+    chmod +x /usr/local/bin/kubiscan; \
+    rm -rf /tmp/kubiscan
 
 # Switch to non-privileged user
 USER subtle
