@@ -80,4 +80,9 @@ role_audit.json
 cluster_role_audit.json
 test_issues_dict.txt
 enumeraga.code-workspace
-.github/copilot-instructions.md
+
+# Ignore untracked markdown files (i.e. local notes)
+*.md
+!README.md
+!CI_CD_SUMMARY.md
+!VERSION_MANAGEMENT.md
