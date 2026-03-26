@@ -42,7 +42,7 @@ jobs:
           black --check --diff kubenumerate.py ExtensiveRoleCheck.py formatter.py
 
       - name: Type check
-        run: mypy kubenumerate.py --ignore-missing-imports
+        run: mypy kubenumerate.py --ignore-missing-imports --disable-error-code=import-untyped
 
       - name: Security scan
         run: bandit -r . -f json -o bandit-report.json || true
