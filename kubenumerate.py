@@ -844,7 +844,14 @@ class Kubenumerate:
                     f'{self.cyan_text("Trivy")}, please wait...'
                 )
             with open(self.pods_file, "r") as f:
-                self.pods = json.loads(f.read())
+                content = f.read().strip()
+            if not content:
+                print(f'{self.red_text("[-]")} Pods file "{self.cyan_text(self.pods_file)}" is empty, skipping.')
+                return
+            try:
+                self.pods = json.loads(content)
+            except json.JSONDecodeError as e:
+                print(f'{self.red_text("[-]")} Failed to parse pods file "{self.cyan_text(self.pods_file)}": {e}')
 
     def kubectl_get_all_yaml_and_json(self) -> None:
         """Gather all output from kubectl in both json and yaml"""

@@ -32,7 +32,7 @@ setup(
     long_description=read_readme(),
     long_description_content_type="text/markdown",
     url="https://github.com/0x5ubt13/kubenumerate",
-    py_modules=["kubenumerate", "ExtensiveRoleCheck", "formatter", "version"],
+    py_modules=["kubenumerate", "ExtensiveRoleCheck", "formatter", "version", "summary_table"],
     classifiers=[
         "Development Status :: 4 - Beta",
         "Intended Audience :: Developers",

@@ -64,7 +64,7 @@ Changelog = "https://github.com/0x5ubt13/kubenumerate/releases"
 kubenumerate = "kubenumerate:main"
 
 [tool.setuptools]
-py-modules = ["kubenumerate", "ExtensiveRoleCheck", "formatter", "version"]
+py-modules = ["kubenumerate", "ExtensiveRoleCheck", "formatter", "version", "summary_table"]
 
 [tool.black]
 line-length = 120

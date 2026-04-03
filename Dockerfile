@@ -139,8 +139,8 @@ WORKDIR /app
 COPY --chown=subtle:subtle requirements.txt .
 
 # Install Python dependencies
-RUN pip install --no-cache-dir --upgrade pip && \ 
-    pip install --no-cache-dir --user -r requirements.txt
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt
 
 # Copy application files
 COPY --chown=subtle:subtle kubenumerate.py ExtensiveRoleCheck.py summary_table.py ./
