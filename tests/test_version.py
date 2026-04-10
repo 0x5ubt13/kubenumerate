@@ -94,20 +94,22 @@ class TestVersionManagement:
 
     def test_get_version_priority(self):
         """Test version priority order"""
-        with patch('version.get_version_from_env', return_value='2.0.0'), \
+        with patch('version.get_version_from_metadata', return_value=None), \
+             patch('version.get_version_from_env', return_value='2.0.0'), \
              patch('version.get_version_from_git_commit', return_value='1.2.3'), \
              patch('version.get_version_from_file', return_value='1.1.0'), \
              patch('version.get_version_from_setup', return_value='1.0.0'):
-            
+
             assert get_version() == '2.0.0'  # Environment should take priority
 
     def test_get_version_fallback(self):
         """Test version fallback to default"""
-        with patch('version.get_version_from_env', return_value=None), \
+        with patch('version.get_version_from_metadata', return_value=None), \
+             patch('version.get_version_from_env', return_value=None), \
              patch('version.get_version_from_git_commit', return_value=None), \
              patch('version.get_version_from_file', return_value=None), \
              patch('version.get_version_from_setup', return_value=None):
-            
+
             assert get_version() == '2.0.0'  # Default fallback
 
     def test_update_version_file(self):
