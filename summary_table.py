@@ -39,7 +39,25 @@ ISSUE_NAME_MAP = {
     "NamespaceHostNetworkTrue": "Uses host network namespace",
     "MissingDefaultDenyIngressAndEgressNetworkPolicy": "Missing default deny network policy",
     "AllowAllEgressNetworkPolicyExists": "Allows all egress traffic",
+    "ProcMountUnmasked": "procMount set to Unmasked (/proc masking disabled)",
+    "ProcMountUnmaskedWithoutUserNamespace": "procMount Unmasked without a user namespace",
+    "UserNamespaceNotEnabled": "User namespace not enabled (hostUsers not false)",
 }
+
+# Findings whose impact is materially reduced when the pod runs in its own user namespace
+# (hostUsers: false), because container root no longer maps to root on the node.
+USERNS_MITIGATED_ISSUES = {
+    "RunAsNonRootPSCNilCSCNil",
+    "RunAsUserCSCRoot",
+    "RunAsUserPSCRoot",
+    "PrivilegedNil",
+    "PrivilegedTrue",
+    "AllowPrivilegeEscalationNil",
+    "AllowPrivilegeEscalationTrue",
+    "CapabilityAdded",
+}
+
+USERNS_MITIGATION_SUFFIX = " (mitigated by user namespace)"
 
 
 def _get_human_readable_issue_name(technical_name: str) -> str:
@@ -113,8 +131,11 @@ def aggregate_issues_by_workload(
             if key not in workload_issues:
                 workload_issues[key] = {"issues": set(), "containers": set(), "vuln_info": {}}
 
-            # Add human-readable issue
+            # Add human-readable issue, noting where a user namespace already blunts it
             human_readable_issue = _get_human_readable_issue_name(issue_type)
+            userns_value = row.get("UserNamespaced", False)
+            if issue_type in USERNS_MITIGATED_ISSUES and pd.notna(userns_value) and bool(userns_value):
+                human_readable_issue += USERNS_MITIGATION_SUFFIX
             workload_issues[key]["issues"].add(human_readable_issue)
 
             # Track containers

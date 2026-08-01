@@ -15,7 +15,7 @@ import platform
 import yaml
 import zipfile
 from datetime import datetime
-from packaging.version import Version
+from packaging.version import InvalidVersion, Version
 from pathlib import Path
 import glob
 from typing import Any, Dict, List, Optional, Tuple
@@ -68,7 +68,7 @@ class Kubenumerate:
         kubectl_path: str = "",
         kubectl_output_path: str = "/tmp/kubenumerate_out/kubectl_output/",
         kubenumerate_path: str = str(Path(os.path.realpath(__file__)).parent.resolve()),
-        kube_version: str = "v1.34.1",
+        kube_version: str = "v1.36.3",
         kubiscan_path: str = "/tmp/kubiscan/",
         kubiscan_py: str = "",
         limits: bool = True,
@@ -1070,6 +1070,7 @@ class Kubenumerate:
         self.kubernetes_version_check()  # TODO: make sure it works with the dry-run flag.
         # Generate local kubeaudit-equivalent findings from kubectl output
         kubeaudit_df = self.generate_kubeaudit_equivalent_df_from_kubectl()
+        self.evaluate_privileged_severity(kubeaudit_df)
         # with open(self.kube_bench_file, "r") as kube_bench_f:
         with pd.ExcelWriter(self.excel_file, engine="xlsxwriter", mode="w") as writer:
             # Run all Kubeaudit-equivalent methods
@@ -1084,8 +1085,10 @@ class Kubenumerate:
             self.non_root(kubeaudit_df, writer)
             self.privesc(kubeaudit_df, writer)
             self.privileged(kubeaudit_df, writer)
+            self.proc_mount(kubeaudit_df, writer)
             self.root_fs(kubeaudit_df, writer)
             self.seccomp(kubeaudit_df, writer)
+            self.user_namespace(kubeaudit_df, writer)
             if self.verbosity > 0:
                 print(f'{self.green_text("[+]")} {self.cyan_text("Kubeaudit-equivalent checks")} successfully parsed.')
             # Run Kube-bench methods
@@ -1264,6 +1267,21 @@ class Kubenumerate:
             return "error"
 
         return tag_name
+
+    def cluster_at_least(self, minimum: str) -> bool:
+        """Whether the cluster runs at least `minimum` (e.g. "1.36.0").
+
+        Used to gate checks for features that only became generally available in a given release, so that auditing an
+        older cluster doesn't raise recommendations its API server cannot honour. Returns False when the cluster
+        version is unknown or unparseable, so gated checks stay silent rather than guessing.
+        """
+
+        if not self.cluster_version:
+            return False
+        try:
+            return Version(self.cluster_version) >= Version(minimum)
+        except InvalidVersion:
+            return False
 
     @staticmethod
     def extract_version(version_output: bytes) -> Optional[str]:
@@ -2014,6 +2032,22 @@ class Kubenumerate:
             if self.verbosity > 1:
                 print(f'[{self.cyan_text("*")}] "PrivilegeEscalation - True" not detected')
 
+    def evaluate_privileged_severity(self, df: pd.DataFrame) -> None:
+        """Raise the privilege-escalation flag only for containers a user namespace doesn't already mitigate.
+
+        A privileged container in a pod with hostUsers: false still holds no authority over the host, so counting it
+        towards "Containers Allowing Privilege Escalation" would overstate the cluster's risk.
+        """
+
+        if df.empty or "AuditResultName" not in df.columns:
+            return
+        privileged_rows = df[df["AuditResultName"].isin(("PrivilegedNil", "PrivilegedTrue"))]
+        if privileged_rows.empty:
+            return
+        mitigated = privileged_rows["UserNamespaced"].fillna(False).astype(bool)
+        if not bool(mitigated.all()):
+            self.privileged_flag = True
+
     def privileged(self, df: pd.DataFrame, writer: Any) -> None:
         """Privileged"""
         try:
@@ -2042,7 +2076,6 @@ class Kubenumerate:
                 writer,
             )
             self.sus_rbac = True
-            self.privileged_flag = True
         except KeyError:
             if self.verbosity > 1:
                 print(f'[{self.cyan_text("*")}] "Privileged - Nil" not detected')
@@ -2073,7 +2106,6 @@ class Kubenumerate:
                 writer,
             )
             self.sus_rbac = True
-            self.privileged_flag = True
         except KeyError:
             if self.verbosity > 1:
                 print(f'[{self.cyan_text("*")}] "Privileged - True" not detected')
@@ -2106,6 +2138,103 @@ class Kubenumerate:
         except KeyError:
             if self.verbosity > 1:
                 print(f'[{self.cyan_text("*")}] "Root FileSystem - ReadOnly Nil" not detected')
+
+    def proc_mount(self, df: pd.DataFrame, writer: Any) -> None:
+        """procMount (KEP-4265, GA in v1.36)"""
+        try:
+            # procMount Unmasked
+            df_proc_mount_unmasked = df[df["AuditResultName"] == "ProcMountUnmasked"]
+            df_proc_mount_unmasked = df_proc_mount_unmasked[
+                ["ResourceNamespace", "ResourceKind", "ResourceName", "Container", "UserNamespaced", "msg"]
+            ]
+            df_proc_mount_unmasked = df_proc_mount_unmasked.rename(
+                columns={
+                    "ResourceNamespace": "Resource Namespace",
+                    "ResourceKind": "Resource Kind",
+                    "ResourceName": "Resource Name",
+                    "Container": "Affected Container",
+                    "UserNamespaced": "Mitigated by User Namespace",
+                    "msg": "Recommendation",
+                }
+            )
+            self.colour_cells_and_save_to_excel(
+                "procMount set to Unmasked in SecurityContext",
+                "By default the container runtime masks or makes read-only a set of sensitive /proc and /sys paths "
+                "(/proc/kcore, /proc/keys, /proc/sched_debug, /proc/timer_list, /sys/firmware and others). Setting "
+                "procMount to Unmasked removes that protection and exposes host kernel state to the container. It "
+                "exists for nested containers and in-pod image builds, and should not be used otherwise. Where it is "
+                "genuinely required, it must be paired with hostUsers: false so the container's root is confined to "
+                "a user namespace.",
+                "Proc Mount - Unmasked",
+                df_proc_mount_unmasked,
+                writer,
+            )
+            self.hardened = False
+        except KeyError:
+            if self.verbosity > 1:
+                print(f'[{self.cyan_text("*")}] "Proc Mount - Unmasked" not detected')
+
+        try:
+            # procMount Unmasked without a user namespace
+            df_proc_mount_no_userns = df[df["AuditResultName"] == "ProcMountUnmaskedWithoutUserNamespace"]
+            df_proc_mount_no_userns = df_proc_mount_no_userns[
+                ["ResourceNamespace", "ResourceKind", "ResourceName", "Container", "msg"]
+            ]
+            df_proc_mount_no_userns = df_proc_mount_no_userns.rename(
+                columns={
+                    "ResourceNamespace": "Resource Namespace",
+                    "ResourceKind": "Resource Kind",
+                    "ResourceName": "Resource Name",
+                    "Container": "Affected Container",
+                    "msg": "Recommendation",
+                }
+            )
+            self.colour_cells_and_save_to_excel(
+                "procMount Unmasked without a user namespace",
+                "Kubernetes rejects procMount: Unmasked unless the pod also sets hostUsers: false. Seeing this "
+                "combination live means the object predates enforcement, the API server has the ProcMountType "
+                "validation disabled, or admission control was bypassed. The container has unmasked access to host "
+                "kernel state while running as real root on the node - treat as a container breakout risk and "
+                "investigate how the object was admitted.",
+                "Proc Mount - No UserNS",
+                df_proc_mount_no_userns,
+                writer,
+            )
+            self.hardened = False
+            self.privileged_flag = True
+            self.sus_rbac = True
+        except KeyError:
+            if self.verbosity > 1:
+                print(f'[{self.cyan_text("*")}] "Proc Mount - No UserNS" not detected')
+
+    def user_namespace(self, df: pd.DataFrame, writer: Any) -> None:
+        """User namespaces (KEP-127, GA in v1.36)"""
+        try:
+            df_userns_not_enabled = df[df["AuditResultName"] == "UserNamespaceNotEnabled"]
+            df_userns_not_enabled = df_userns_not_enabled[["ResourceNamespace", "ResourceKind", "ResourceName", "msg"]]
+            df_userns_not_enabled = df_userns_not_enabled.rename(
+                columns={
+                    "ResourceNamespace": "Resource Namespace",
+                    "ResourceKind": "Resource Kind",
+                    "ResourceName": "Resource Name",
+                    "msg": "Recommendation",
+                }
+            )
+            self.colour_cells_and_save_to_excel(
+                "User namespaces not enabled",
+                "User namespaces became generally available in Kubernetes v1.36. Setting hostUsers: false in the pod "
+                "spec maps the container's UID 0 to an unprivileged UID on the node, so a process can be root inside "
+                "the container without being root on the host, and capabilities such as CAP_NET_ADMIN only apply to "
+                "container-local resources. This significantly reduces the impact of a container breakout and "
+                "requires no changes to container images. Workloads that must run as root should enable it.",
+                "User Namespace - Not Enabled",
+                df_userns_not_enabled,
+                writer,
+            )
+            self.hardened = False
+        except KeyError:
+            if self.verbosity > 1:
+                print(f'[{self.cyan_text("*")}] "User Namespace - Not Enabled" not detected')
 
     def seccomp(self, df: pd.DataFrame, writer: Any) -> None:
         """Seccomp profile"""
@@ -2558,6 +2687,19 @@ class Kubenumerate:
             f'\t  {self.green_text("By 0x5ubt13")} {self.yellow_text(f"v{self.version}")}\n'
         )
 
+    @staticmethod
+    def classify_init_container(container: Dict[str, Any]) -> Tuple[str, str]:
+        """Tell a sidecar apart from an ordinary init container, returning its type and display suffix.
+
+        An initContainer with restartPolicy: Always is restarted until the regular containers terminate, so it runs
+        for the pod's whole lifetime (KEP-753). Its security posture is therefore closer to an app container than to
+        a short-lived init container, and a privileged or unmasked one is exposed for far longer.
+        """
+
+        if container.get("restartPolicy") == "Always":
+            return "sidecarContainer", " (sidecar)"
+        return "initContainer", " (init)"
+
     def get_normalised_deprecated_apis_dict(
         self,
     ) -> Dict[Tuple[str, str], Tuple[int, int, int, int, int | None, int | None]]:
@@ -2659,11 +2801,37 @@ class Kubenumerate:
                     pod_spec = spec.get("template", {}).get("spec", spec)  # For controllers, use template.spec
                     pod_security_ctx = pod_spec.get("securityContext", {})
                     # print(f"debug: pod_spec {pod_spec}")
+                    # initContainers and ephemeralContainers accept the same securityContext as normal containers, so
+                    # a privileged initContainer or an unmasked debug container is just as much a finding. Each entry
+                    # is (container, type, display suffix); the suffix keeps them distinguishable in every report.
                     containers = pod_spec.get("containers", [])
+                    all_containers = (
+                        [(c, "container", "") for c in containers]
+                        + [(c, *self.classify_init_container(c)) for c in pod_spec.get("initContainers", [])]
+                        + [(c, "ephemeralContainer", " (ephemeral)") for c in pod_spec.get("ephemeralContainers", [])]
+                    )
+                    # User namespaces (KEP-127, GA in v1.36). hostUsers defaults to true, i.e. the pod shares the
+                    # host user namespace. When false, container UID 0 maps to an unprivileged host UID, which
+                    # mitigates every root-related finding below.
+                    userns_isolated = pod_spec.get("hostUsers", True) is False
+                    # AutomountServiceAccountToken is a pod-level property, so it is checked once per pod rather
+                    # than once per container.
+                    automount = pod_spec.get("automountServiceAccountToken", True)
+                    sa_name = pod_spec.get("serviceAccountName", "default")
+                    if all_containers and automount and sa_name == "default":
+                        findings.append(
+                            {
+                                "AuditResultName": "AutomountServiceAccountTokenTrueAndDefaultSA",
+                                "ResourceNamespace": namespace,
+                                "ResourceKind": kind,
+                                "ResourceName": name,
+                                "msg": "Pod automounts service account token and uses default SA.",
+                            }
+                        )
                     # AppArmor, Seccomp, ASAT, Capabilities, Limits, Mounts, Non-root, Privesc, Privileged, RootFS
-                    for container in containers:
+                    for container, container_type, cname_suffix in all_containers:
                         # print(f"debug: container {container}")
-                        cname = container.get("name", "")
+                        cname = f"{container.get('name', '')}{cname_suffix}"
                         security_ctx = container.get("securityContext", {})
                         anns = item.get("metadata", {}).get("annotations", {})
                         # AppArmor
@@ -2684,6 +2852,7 @@ class Kubenumerate:
                                     "ResourceKind": kind,
                                     "ResourceName": name,
                                     "Container": cname,
+                                    "ContainerType": container_type,
                                     "msg": "AppArmor profile not set.",
                                 }
                             )
@@ -2702,20 +2871,8 @@ class Kubenumerate:
                                     "ResourceKind": kind,
                                     "ResourceName": name,
                                     "Container": cname,
+                                    "ContainerType": container_type,
                                     "msg": "Seccomp profile missing.",
-                                }
-                            )
-                        # AutomountServiceAccountToken
-                        automount = pod_spec.get("automountServiceAccountToken", True)
-                        sa_name = pod_spec.get("serviceAccountName", "default")
-                        if automount and sa_name == "default":
-                            findings.append(
-                                {
-                                    "AuditResultName": "AutomountServiceAccountTokenTrueAndDefaultSA",
-                                    "ResourceNamespace": namespace,
-                                    "ResourceKind": kind,
-                                    "ResourceName": name,
-                                    "msg": "Pod automounts service account token and uses default SA.",
                                 }
                             )
                         # Capabilities
@@ -2727,6 +2884,7 @@ class Kubenumerate:
                                     "ResourceKind": kind,
                                     "ResourceName": name,
                                     "Container": cname,
+                                    "ContainerType": container_type,
                                     "msg": "Missing securityContext or capabilities.",
                                 }
                             )
@@ -2740,6 +2898,8 @@ class Kubenumerate:
                                         "ResourceKind": kind,
                                         "ResourceName": name,
                                         "Container": cname,
+                                        "ContainerType": container_type,
+                                        "UserNamespaced": userns_isolated,
                                         "Metadata": str(caps["add"]),
                                         "msg": f"Capabilities added: {caps['add']}",
                                     }
@@ -2752,34 +2912,39 @@ class Kubenumerate:
                                         "ResourceKind": kind,
                                         "ResourceName": name,
                                         "Container": cname,
+                                        "ContainerType": container_type,
                                         "msg": "Container should drop all capabilities.",
                                     }
                                 )
-                        # Limits
-                        resources = container.get("resources", {})
-                        limits = resources.get("limits", {})
-                        if not limits:
-                            findings.append(
-                                {
-                                    "AuditResultName": "LimitsNotSet",
-                                    "ResourceNamespace": namespace,
-                                    "ResourceKind": kind,
-                                    "ResourceName": name,
-                                    "Container": cname,
-                                    "msg": "No resource limits set.",
-                                }
-                            )
-                        if "cpu" not in limits:
-                            findings.append(
-                                {
-                                    "AuditResultName": "LimitsCPUNotSet",
-                                    "ResourceNamespace": namespace,
-                                    "ResourceKind": kind,
-                                    "ResourceName": name,
-                                    "Container": cname,
-                                    "msg": "No CPU limit set.",
-                                }
-                            )
+                        # Limits. The API forbids `resources` on ephemeral containers ("Resources are not allowed for
+                        # ephemeral containers", EphemeralContainerCommon), so flagging them would always be wrong.
+                        if container_type != "ephemeralContainer":
+                            resources = container.get("resources", {})
+                            limits = resources.get("limits", {})
+                            if not limits:
+                                findings.append(
+                                    {
+                                        "AuditResultName": "LimitsNotSet",
+                                        "ResourceNamespace": namespace,
+                                        "ResourceKind": kind,
+                                        "ResourceName": name,
+                                        "Container": cname,
+                                        "ContainerType": container_type,
+                                        "msg": "No resource limits set.",
+                                    }
+                                )
+                            if "cpu" not in limits:
+                                findings.append(
+                                    {
+                                        "AuditResultName": "LimitsCPUNotSet",
+                                        "ResourceNamespace": namespace,
+                                        "ResourceKind": kind,
+                                        "ResourceName": name,
+                                        "Container": cname,
+                                        "ContainerType": container_type,
+                                        "msg": "No CPU limit set.",
+                                    }
+                                )
                         # Mounts
                         for vol_mount in container.get("volumeMounts", []):
                             mount_path = vol_mount.get("mountPath", "")
@@ -2797,6 +2962,7 @@ class Kubenumerate:
                                             "ResourceKind": kind,
                                             "ResourceName": name,
                                             "Container": cname,
+                                            "ContainerType": container_type,
                                             "msg": f"Sensitive path mounted: {mount_path}",
                                         }
                                     )
@@ -2813,6 +2979,8 @@ class Kubenumerate:
                                     "ResourceKind": kind,
                                     "ResourceName": name,
                                     "Container": cname,
+                                    "ContainerType": container_type,
+                                    "UserNamespaced": userns_isolated,
                                     "msg": "runAsNonRoot not set in Pod or Container SecurityContext.",
                                 }
                             )
@@ -2824,6 +2992,8 @@ class Kubenumerate:
                                     "ResourceKind": kind,
                                     "ResourceName": name,
                                     "Container": cname,
+                                    "ContainerType": container_type,
+                                    "UserNamespaced": userns_isolated,
                                     "msg": "Container runs as UID 0.",
                                 }
                             )
@@ -2835,6 +3005,8 @@ class Kubenumerate:
                                     "ResourceKind": kind,
                                     "ResourceName": name,
                                     "Container": cname,
+                                    "ContainerType": container_type,
+                                    "UserNamespaced": userns_isolated,
                                     "msg": "Pod runs as UID 0.",
                                 }
                             )
@@ -2848,6 +3020,8 @@ class Kubenumerate:
                                     "ResourceKind": kind,
                                     "ResourceName": name,
                                     "Container": cname,
+                                    "ContainerType": container_type,
+                                    "UserNamespaced": userns_isolated,
                                     "msg": "allowPrivilegeEscalation not set.",
                                 }
                             )
@@ -2859,6 +3033,8 @@ class Kubenumerate:
                                     "ResourceKind": kind,
                                     "ResourceName": name,
                                     "Container": cname,
+                                    "ContainerType": container_type,
+                                    "UserNamespaced": userns_isolated,
                                     "msg": "allowPrivilegeEscalation is true.",
                                 }
                             )
@@ -2872,6 +3048,8 @@ class Kubenumerate:
                                     "ResourceKind": kind,
                                     "ResourceName": name,
                                     "Container": cname,
+                                    "ContainerType": container_type,
+                                    "UserNamespaced": userns_isolated,
                                     "msg": "privileged not set.",
                                 }
                             )
@@ -2883,9 +3061,41 @@ class Kubenumerate:
                                     "ResourceKind": kind,
                                     "ResourceName": name,
                                     "Container": cname,
+                                    "ContainerType": container_type,
+                                    "UserNamespaced": userns_isolated,
                                     "msg": "privileged is true.",
                                 }
                             )
+                        # procMount (KEP-4265, GA in v1.36). Unmasked lifts the runtime's masking of /proc/kcore,
+                        # /proc/keys, /proc/sched_debug, /sys/firmware and friends. Deliberately not version-gated:
+                        # if the field survived admission it is live, and dangerous, whatever the cluster version.
+                        if security_ctx.get("procMount") == "Unmasked":
+                            findings.append(
+                                {
+                                    "AuditResultName": "ProcMountUnmasked",
+                                    "ResourceNamespace": namespace,
+                                    "ResourceKind": kind,
+                                    "ResourceName": name,
+                                    "Container": cname,
+                                    "ContainerType": container_type,
+                                    "UserNamespaced": userns_isolated,
+                                    "msg": "procMount is Unmasked, exposing normally-masked /proc and /sys paths.",
+                                }
+                            )
+                            if not userns_isolated:
+                                findings.append(
+                                    {
+                                        "AuditResultName": "ProcMountUnmaskedWithoutUserNamespace",
+                                        "ResourceNamespace": namespace,
+                                        "ResourceKind": kind,
+                                        "ResourceName": name,
+                                        "Container": cname,
+                                        "ContainerType": container_type,
+                                        "UserNamespaced": userns_isolated,
+                                        "msg": "procMount is Unmasked without hostUsers: false, which the API "
+                                        "server should reject.",
+                                    }
+                                )
                         # Root filesystem
                         ro_rootfs = security_ctx.get("readOnlyRootFilesystem")
                         if not ro_rootfs:
@@ -2896,9 +3106,23 @@ class Kubenumerate:
                                     "ResourceKind": kind,
                                     "ResourceName": name,
                                     "Container": cname,
+                                    "ContainerType": container_type,
                                     "msg": "readOnlyRootFilesystem not set or false.",
                                 }
                             )
+                    # User namespaces. Gated on v1.36+, where hostUsers went GA: on older clusters the field is
+                    # alpha/beta and may be stripped by the API server, so recommending it would be a false positive.
+                    if all_containers and not userns_isolated and self.cluster_at_least("1.36.0"):
+                        findings.append(
+                            {
+                                "AuditResultName": "UserNamespaceNotEnabled",
+                                "ResourceNamespace": namespace,
+                                "ResourceKind": kind,
+                                "ResourceName": name,
+                                "UserNamespaced": False,
+                                "msg": "hostUsers is not false, so container root is also root on the node.",
+                            }
+                        )
                     # Host namespace
                     if pod_spec.get("hostPID") is True:
                         findings.append(
@@ -2963,6 +3187,8 @@ class Kubenumerate:
             "ResourceKind",
             "ResourceName",
             "Container",
+            "ContainerType",
+            "UserNamespaced",
             "AnnotationValue",
             "MissingAnnotation",
             "Metadata",
