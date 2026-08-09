@@ -1,5 +1,16 @@
 # Kubenumerate
 
+<p align="center">
+  <a href="https://github.com/0x5ubt13/kubenumerate/actions/workflows/ci-cd.yml"><img src="https://github.com/0x5ubt13/kubenumerate/actions/workflows/ci-cd.yml/badge.svg" alt="CI/CD"></a>
+  <a href="https://pypi.org/project/kubenumerate/"><img src="https://img.shields.io/pypi/v/kubenumerate?logo=pypi&logoColor=white" alt="PyPI"></a>
+  <a href="https://pypi.org/project/kubenumerate/"><img src="https://img.shields.io/pypi/pyversions/kubenumerate?logo=python&logoColor=white" alt="Python versions"></a>
+  <a href="https://hub.docker.com/r/gagarter/kubenumerate"><img src="https://img.shields.io/docker/pulls/gagarter/kubenumerate?logo=docker&logoColor=white" alt="Docker Pulls"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-GPLv3-blue.svg" alt="License: GPLv3"></a>
+  <a href="https://github.com/0x5ubt13/kubenumerate/releases"><img src="https://img.shields.io/github/v/release/0x5ubt13/kubenumerate?logo=github" alt="Release"></a>
+  <a href="https://github.com/psf/black"><img src="https://img.shields.io/badge/code%20style-black-000000.svg" alt="Code style: black"></a>
+  <a href="https://github.com/PyCQA/bandit"><img src="https://img.shields.io/badge/security-bandit-yellow.svg" alt="Security: bandit"></a>
+</p>
+
 Enumerate your target Kubernetes cluster with just 1 command! :eyes:
 
 ## Motivation
