@@ -9,6 +9,7 @@
   <a href="https://github.com/0x5ubt13/kubenumerate/releases"><img src="https://img.shields.io/github/v/release/0x5ubt13/kubenumerate?logo=github" alt="Release"></a>
   <a href="https://github.com/psf/black"><img src="https://img.shields.io/badge/code%20style-black-000000.svg" alt="Code style: black"></a>
   <a href="https://github.com/PyCQA/bandit"><img src="https://img.shields.io/badge/security-bandit-yellow.svg" alt="Security: bandit"></a>
+  <a href="https://securityscorecards.dev/viewer/?uri=github.com/0x5ubt13/kubenumerate"><img src="https://api.securityscorecards.dev/projects/github.com/0x5ubt13/kubenumerate/badge" alt="OpenSSF Scorecard"></a>
 </p>
 
 Enumerate your target Kubernetes cluster with just 1 command! :eyes:

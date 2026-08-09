@@ -19,7 +19,7 @@ jobs:
       id-token: write
     steps:
       - name: Checkout code
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
@@ -28,10 +28,9 @@ jobs:
         with:
           results_file: results.sarif
           results_format: sarif
-          # Publishes results to the public OpenSSF API, which is what makes a
-          # Scorecard badge resolve. Left disabled until we are happy with the
-          # score - the workflow still uploads results to the Security tab.
-          publish_results: false
+          # Publishes results to the public OpenSSF API, which is what makes the
+          # Scorecard badge in the README resolve.
+          publish_results: true
 
       - name: Upload artifact
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -41,6 +40,6 @@ jobs:
           retention-days: 5
 
       - name: Upload to code-scanning
-        uses: github/codeql-action/upload-sarif@c4dd10e44af883a891fe31ced449bcb4a6728b9b # v3
+        uses: github/codeql-action/upload-sarif@5595ccaf912efad79be6eef63a5619ff05969be3 # v4.37.6
         with:
           sarif_file: results.sarif
