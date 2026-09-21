@@ -252,6 +252,25 @@ class TestPrivilegedFlagSuppression:
         kube.evaluate_privileged_severity(df)
         assert kube.privileged_flag is True
 
+    def test_missing_user_namespaced_value_is_not_mitigated_and_does_not_warn(self):
+        import warnings
+
+        import numpy as np
+        import pandas as pd
+
+        df = pd.DataFrame(
+            [
+                {"AuditResultName": "PrivilegedTrue", "UserNamespaced": np.nan},
+                {"AuditResultName": "PrivilegedTrue", "UserNamespaced": True},
+            ]
+        )
+        kube = Kubenumerate(verbosity=0)
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            kube.evaluate_privileged_severity(df)
+        assert kube.privileged_flag is True
+        assert not any("Downcasting object dtype" in str(item.message) for item in caught)
+
 
 class TestSummaryTableIntegration:
     """New findings must render as prose in the Word summary, not as raw result names."""

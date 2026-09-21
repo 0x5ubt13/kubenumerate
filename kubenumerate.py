@@ -2044,7 +2044,10 @@ class Kubenumerate:
         privileged_rows = df[df["AuditResultName"].isin(("PrivilegedNil", "PrivilegedTrue"))]
         if privileged_rows.empty:
             return
-        mitigated = privileged_rows["UserNamespaced"].fillna(False).astype(bool)
+        # Object dtype mixes bools with missing values. fillna() downcasts that, which pandas
+        # is removing, and bool(nan) is True, so cast to a nullable boolean before filling.
+        user_namespaced = privileged_rows["UserNamespaced"].astype("boolean")
+        mitigated = user_namespaced.fillna(False).astype(bool)
         if not bool(mitigated.all()):
             self.privileged_flag = True
 
