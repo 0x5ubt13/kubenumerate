@@ -1016,9 +1016,9 @@ class Kubenumerate:
         """Namespace objects are cluster-scoped, so in namespace mode each selected namespace is read by name, one GET
         per name, to obtain its Pod Security Admission labels. Nothing is listed."""
         items = []
-        for name in dict.fromkeys(self.namespaces):
+        for name in dict.fromkeys(self.namespaces or []):
             output, error = self.kubectl_get("namespace", [name], "json")
-            if error is None:
+            if output is not None:
                 items.append(json.loads(output))
             self.record_coverage([name], "namespaces", error or "collected")
         with open(f"{self.kubectl_output_path}namespaces.json", "w") as f:
@@ -1148,7 +1148,7 @@ class Kubenumerate:
                         self.record_coverage(scope, resource, "failed", str(e))
                     continue
 
-                items = []
+                items: List[Any] = []
                 for scope, output, error in results:
                     scope_items = json.loads(output).get("items", []) if output is not None else []
                     items.extend(scope_items)

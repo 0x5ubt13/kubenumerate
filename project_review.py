@@ -464,15 +464,15 @@ def project_findings(item: Dict[str, Any]) -> List[Dict[str, Any]]:
 
     elif kind == "PersistentVolumeClaim":
         storage = ((spec.get("resources") or {}).get("requests") or {}).get("storage", NOT_SET)
-        modes = spec.get("accessModes", []) or []
+        access_modes = spec.get("accessModes", []) or []
         storage_class = spec.get("storageClassName")
         add(
             "PVCConfigured",
-            f"Requests {storage}; access modes {', '.join(modes) or 'none'}; storage class {storage_class or NOT_SET}.",
+            f"Requests {storage}; access modes {', '.join(access_modes) or 'none'}; storage class {storage_class or NOT_SET}.",
         )
         if not storage_class:
             add("PVCStorageClassNotSet", "storageClassName is not set; the cluster default class applies, if any.")
-        if "ReadWriteMany" in modes:
+        if "ReadWriteMany" in access_modes:
             add("PVCReadWriteMany", "Claim allows ReadWriteMany: several nodes can mount it read-write.")
 
     elif kind == "PodDisruptionBudget":
@@ -549,7 +549,8 @@ def _confluent_findings(item: Dict[str, Any], add: Callable[[str, str], None]) -
     spec = item.get("spec", {}) or {}
 
     if kind == "kafka":
-        listeners = spec.get("listeners") if isinstance(spec.get("listeners"), dict) else {}
+        raw_listeners = spec.get("listeners")
+        listeners: Dict[str, Any] = raw_listeners if isinstance(raw_listeners, dict) else {}
         # Built-in and custom listeners share the verified auth and TLS fields, so they are checked the same way
         entries: List[Tuple[str, Any]] = [
             (name, listeners.get(name)) for name in ("internal", "external", "replication")
@@ -716,13 +717,13 @@ def cross_object_findings(
             continue
         metadata = item.get("metadata", {}) or {}
         ref = item.get("roleRef", {}) or {}
-        risks = role_risks.get((metadata.get("namespace", ""), ref.get("name", "")))
-        if ref.get("kind") == "Role" and risks:
+        matched = role_risks.get((metadata.get("namespace", ""), ref.get("name", "")))
+        if ref.get("kind") == "Role" and matched:
             findings.append(
                 _make(
                     "BindingToRiskyRole",
                     f"Binds Role '{ref.get('name', '')}', which grants: "
-                    + "; ".join(f"{audit} ({', '.join(details)})" for audit, details in sorted(risks.items()))
+                    + "; ".join(f"{audit} ({', '.join(details)})" for audit, details in sorted((matched or {}).items()))
                     + ".",
                     metadata.get("namespace", ""),
                     "RoleBinding",
@@ -734,13 +735,13 @@ def cross_object_findings(
         if item.get("kind") != "ClusterRoleBinding" or item.get("metadata", {}).get("name", "").startswith("system:"):
             continue
         ref = item.get("roleRef", {}) or {}
-        risks = cluster_role_risks.get(ref.get("name", ""))
-        if ref.get("kind") == "ClusterRole" and risks:
+        matched = cluster_role_risks.get(ref.get("name", ""))
+        if ref.get("kind") == "ClusterRole" and matched:
             findings.append(
                 _make(
                     "ClusterBindingToRiskyRole",
                     f"Binds ClusterRole '{ref.get('name', '')}', which grants: "
-                    + "; ".join(f"{audit} ({', '.join(details)})" for audit, details in sorted(risks.items()))
+                    + "; ".join(f"{audit} ({', '.join(details)})" for audit, details in sorted((matched or {}).items()))
                     + ".",
                     "",
                     "ClusterRoleBinding",
