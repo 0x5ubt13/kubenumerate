@@ -74,6 +74,11 @@ RUN curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.34/deb/Release.key | \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
+# Install oc, the OpenShift CLI used by --openshift (oc is a superset of kubectl)
+RUN curl -fsSL https://mirror.openshift.com/pub/openshift-v4/clients/ocp/stable/openshift-client-linux.tar.gz | \
+    tar -xz -C /usr/local/bin oc && \
+    chmod +x /usr/local/bin/oc
+
 # Install Azure CLI
 RUN curl -sL https://aka.ms/InstallAzureCLIDeb | bash && \ 
     apt-get autoremove -y && \
@@ -143,7 +148,7 @@ RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt
 
 # Copy application files
-COPY --chown=subtle:subtle kubenumerate.py ExtensiveRoleCheck.py summary_table.py ./
+COPY --chown=subtle:subtle kubenumerate.py ExtensiveRoleCheck.py summary_table.py project_review.py ./
 
 # Set entrypoint
 ENTRYPOINT ["python3", "kubenumerate.py"]

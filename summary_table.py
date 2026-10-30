@@ -13,7 +13,7 @@ from docx.shared import Pt, RGBColor, Inches
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml.ns import qn
 from docx.oxml import OxmlElement
-
+from project_review import RECOMMENDATIONS
 
 # Issue name mapping from technical names to human-readable descriptions
 ISSUE_NAME_MAP = {
@@ -303,100 +303,127 @@ def _set_cell_background(cell: Any, color_rgb: Tuple[int, int, int]) -> None:
     cell._element.get_or_add_tcPr().append(shading_elm)
 
 
-def generate_word_summary_table(
-    summary_data: Dict[Tuple[str, str, str], Dict[str, Any]], output_path: str, verbosity: int = 1
-) -> None:
-    """
-    Generate a Microsoft Word document with a summary table of workload issues.
+HEADER_COLOUR = (169, 53, 69)  # Dark red (#A93545)
+ROW_COLOURS = ((226, 226, 226), (255, 255, 255))  # Light gray (#E2E2E2), white
+REVIEW_HEADERS = ["Check", "Namespace", "Kind", "Name", "Observation", "Recommendation"]
+REVIEW_WIDTHS = [1.2, 0.9, 0.8, 1.0, 1.6, 1.5]
 
-    Args:
-        summary_data: Dictionary mapping (namespace, kind, name) to issue data
-        output_path: Path where the Word document should be saved
-        verbosity: Verbosity level for output messages
-    """
-    # Create document
-    doc = Document()
 
-    # Set document title
-    title = doc.add_heading("Kubenumerate Security Issues Summary", 0)
-    title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+def _text(value: Any) -> str:
+    """Cell text, with missing values shown as empty"""
+    if value is None or (isinstance(value, float) and pd.isna(value)):
+        return ""
+    return str(value)
 
-    # Add subtitle with info
-    subtitle = doc.add_paragraph()
-    subtitle.add_run(
-        f"This report summarises security and configuration issues found in {len(summary_data)} "
-        f"Kubernetes workloads.\n"
-    )
-    subtitle.alignment = WD_ALIGN_PARAGRAPH.CENTER
 
-    doc.add_paragraph()  # Spacing
-
-    if not summary_data:
-        no_issues = doc.add_paragraph()
-        no_issues.add_run("✓ No issues detected in workload controllers!").bold = True
-        no_issues.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        doc.save(output_path)
-        return
-
-    # Create table with 4 columns: Namespace, Workload, Type, Issues
-    table = doc.add_table(rows=1, cols=4)
+def _add_table(doc: Any, headers: List[str], rows: List[List[Any]], widths: List[float]) -> None:
+    """A styled table: a header row, then rows with alternating shading"""
+    table = doc.add_table(rows=1, cols=len(headers))
     table.style = "Light Grid Accent 1"
+    for column, width in zip(table.columns, widths):
+        column.width = Inches(width)
 
-    # Set column widths
-    table.columns[0].width = Inches(1.5)  # Namespace
-    table.columns[1].width = Inches(2.0)  # Workload
-    table.columns[2].width = Inches(1.2)  # Type
-    table.columns[3].width = Inches(3.8)  # Issues
-
-    # Header row
     header_cells = table.rows[0].cells
-    header_cells[0].text = "Namespace"
-    header_cells[1].text = "Workload"
-    header_cells[2].text = "Type"
-    header_cells[3].text = "Issues"
-
-    # Style header row
-    for cell in header_cells:
-        _set_cell_background(cell, (169, 53, 69))  # Dark red (#A93545)
+    for cell, header in zip(header_cells, headers):
+        cell.text = header
+        _set_cell_background(cell, HEADER_COLOUR)
         for paragraph in cell.paragraphs:
             for run in paragraph.runs:
                 run.font.bold = True
                 run.font.color.rgb = RGBColor(255, 255, 255)
                 run.font.size = Pt(11)
 
-    # Sort workloads by namespace, then kind, then name (ensure all are strings)
-    sorted_workloads = sorted(
-        summary_data.items(), key=lambda x: (str(x[0][0] or ""), str(x[0][1] or ""), str(x[0][2] or ""))
-    )
-
-    # Add data rows
-    for idx, ((namespace, kind, name), data) in enumerate(sorted_workloads):
-        row_cells = table.add_row().cells
-
-        row_cells[0].text = str(namespace or "")
-        row_cells[1].text = str(name or "")
-        row_cells[2].text = str(kind or "")
-        row_cells[3].text = format_issues_list(data.get("issues", []))
-
-        # Alternate row colors for readability
-        if idx % 2 == 0:
-            bg_color = (226, 226, 226)  # Light gray (#E2E2E2)
-        else:
-            bg_color = (255, 255, 255)  # White
-
-        for cell in row_cells:
-            _set_cell_background(cell, bg_color)
+    for index, row in enumerate(rows):
+        cells = table.add_row().cells
+        for cell, value in zip(cells, row):
+            cell.text = _text(value)
+            _set_cell_background(cell, ROW_COLOURS[index % 2])
             for paragraph in cell.paragraphs:
                 for run in paragraph.runs:
                     run.font.size = Pt(10)
 
-    # Add footer with statistics
-    doc.add_paragraph()
-    stats = doc.add_paragraph()
-    total_issues = sum(data["issue_count"] for data in summary_data.values())
-    stats.add_run(f"Summary: Found {total_issues} total issues across {len(summary_data)} workloads.").italic = True
 
-    # Save document
+def _review_rows(findings_df: pd.DataFrame, audit_names: List[str]) -> List[List[str]]:
+    """One row per observation of the given audit names, ordered by namespace, kind and name"""
+    selected = findings_df[findings_df["AuditResultName"].isin(audit_names)]
+    rows = [
+        [
+            _text(finding["AuditResultName"]),
+            _text(finding["ResourceNamespace"]),
+            _text(finding["ResourceKind"]),
+            _text(finding["ResourceName"]),
+            _text(finding["msg"]),
+            RECOMMENDATIONS.get(finding["AuditResultName"], ""),
+        ]
+        for _, finding in selected.iterrows()
+    ]
+    return sorted(rows, key=lambda row: (row[1], row[2], row[3], row[0]))
+
+
+def generate_word_summary_table(
+    summary_data: Dict[Tuple[str, str, str], Dict[str, Any]],
+    output_path: str,
+    verbosity: int = 1,
+    review_blocks: List[Tuple[str, str, List[List[str]]]] = [],
+    notes: List[str] = [],
+) -> None:
+    """
+    Generate the Word report: workload issues, then one section per review area that ran.
+
+    Args:
+        summary_data: Dictionary mapping (namespace, kind, name) to issue data
+        output_path: Path where the Word document should be saved
+        verbosity: Verbosity level for output messages
+        review_blocks: (title, description, rows) per review section; rows follow REVIEW_HEADERS
+        notes: Statements about what this run did not check
+    """
+    doc = Document()
+    title = doc.add_heading("Kubenumerate Security Issues Summary", 0)
+    title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+
+    subtitle = doc.add_paragraph()
+    subtitle.add_run(
+        f"Security and configuration issues found in {len(summary_data)} Kubernetes workloads, followed by the "
+        "namespace, cluster and platform review.\n"
+    )
+    subtitle.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    for note in notes:
+        paragraph = doc.add_paragraph()
+        paragraph.add_run(note).italic = True
+    doc.add_paragraph()  # Spacing
+
+    doc.add_heading("Workload controllers", 1)
+    if not summary_data:
+        no_issues = doc.add_paragraph()
+        no_issues.add_run("✓ No issues detected in workload controllers!").bold = True
+        no_issues.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    else:
+        sorted_workloads = sorted(
+            summary_data.items(), key=lambda x: (str(x[0][0] or ""), str(x[0][1] or ""), str(x[0][2] or ""))
+        )
+        _add_table(
+            doc,
+            ["Namespace", "Workload", "Type", "Issues"],
+            [
+                [namespace, name, kind, format_issues_list(data.get("issues", []))]
+                for (namespace, kind, name), data in sorted_workloads
+            ],
+            [1.5, 2.0, 1.2, 3.8],
+        )
+        doc.add_paragraph()
+        stats = doc.add_paragraph()
+        total_issues = sum(data["issue_count"] for data in summary_data.values())
+        stats.add_run(f"Summary: Found {total_issues} total issues across {len(summary_data)} workloads.").italic = True
+
+    for block_title, block_description, rows in review_blocks:
+        doc.add_heading(block_title, 1)
+        description = doc.add_paragraph()
+        description.add_run(block_description).italic = True
+        if rows:
+            _add_table(doc, REVIEW_HEADERS, rows, REVIEW_WIDTHS)
+        else:
+            doc.add_paragraph("No observations in this run.")
+
     doc.save(output_path)
 
     if verbosity > 0:
@@ -404,19 +431,27 @@ def generate_word_summary_table(
 
 
 def generate_summary_table(
-    findings_df: pd.DataFrame, trivy_results: List[List[Any]], output_path: str, verbosity: int = 1
+    findings_df: pd.DataFrame,
+    trivy_results: List[List[Any]],
+    output_path: str,
+    verbosity: int = 1,
+    review_sections: List[Tuple[str, str, str, List[str]]] = [],
+    notes: List[str] = [],
 ) -> None:
     """
-    Main entry point to generate the summary table.
+    Generate the Word report from the findings DataFrame.
 
     Args:
         findings_df: DataFrame with security/config findings
         trivy_results: List of vulnerable containers from trivy
         output_path: Path where the Word document should be saved
         verbosity: Verbosity level for output
+        review_sections: The review sections this run produced (title, description, sheet, audit names)
+        notes: Statements about what this run did not check
     """
-    # Aggregate issues by workload
     summary_data = aggregate_issues_by_workload(findings_df, trivy_results, verbosity)
-
-    # Generate Word document
-    generate_word_summary_table(summary_data, output_path, verbosity)
+    review_blocks = [
+        (title, description, _review_rows(findings_df, audit_names))
+        for title, description, _sheet, audit_names in review_sections
+    ]
+    generate_word_summary_table(summary_data, output_path, verbosity, review_blocks, notes)

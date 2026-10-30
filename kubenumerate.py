@@ -14,11 +14,18 @@ import time
 import platform
 import yaml
 import zipfile
-from datetime import datetime
+from datetime import datetime, timezone
 from packaging.version import InvalidVersion, Version
 from pathlib import Path
 import glob
 from typing import Any, Dict, List, Optional, Tuple
+from project_review import (
+    NOT_ASSESSED_CLUSTER_SCOPED,
+    RECOMMENDATIONS,
+    selected_sections,
+    cross_object_findings,
+    project_findings,
+)
 
 # Import version management
 try:
@@ -27,6 +34,24 @@ except ImportError:
     # Fallback if version.py is not available
     def get_version() -> str:
         return "2.0.0"
+
+
+# SCCs that let a pod run with more privilege than the restricted-v2 default
+OPENSHIFT_PERMISSIVE_SCCS = {
+    "privileged",
+    "anyuid",
+    "hostnetwork",
+    "hostnetwork-v2",
+    "hostaccess",
+    "hostmount-anyuid",
+    "node-exporter",
+}
+# Groups that cover every identity; granting a permissive SCC to them is a broad exposure
+OPENSHIFT_BROAD_SUBJECTS = {"system:authenticated", "system:anonymous", "system:unauthenticated"}
+
+
+# Written into the kubectl output directory so a later run can tell whether reused files match its scope
+SCOPE_MARKER = ".kubenumerate_scope.json"
 
 
 class Kubenumerate:
@@ -72,7 +97,8 @@ class Kubenumerate:
         kubiscan_path: str = "/tmp/kubiscan/",
         kubiscan_py: str = "",
         limits: bool = True,
-        namespace: str = "-A",
+        namespaces: Optional[List[str]] = None,
+        openshift: bool = False,
         out_path: str = "/tmp/kubenumerate_out/",
         pkl_recovery: str = "",
         pods: Dict[str, Any] = {},
@@ -133,7 +159,12 @@ class Kubenumerate:
         self.kubiscan_path = kubiscan_path
         self.kubiscan_py = kubiscan_py
         self.limits_set = limits
-        self.namespace = namespace
+        self.namespaces = self.normalise_namespaces(namespaces)
+        self.coverage: List[Dict[str, str]] = []
+        self.skip_review = False
+        self.skip_trivy = False
+        self.generate_empty_sheets = False
+        self.openshift = openshift
         self.out_path = out_path
         self.pods = pods
         self.pods_file = pods_file
@@ -187,9 +218,12 @@ class Kubenumerate:
         parser.add_argument("--kubeconfig", "-k", help="Select a specific Kubeconfig file you want to use")
         parser.add_argument(
             "--namespace",
+            "--project",
             "-n",
-            help="Select a specific namespace to test, if your scope is restricted. Default: -A",
-            default="-A",
+            dest="namespaces",
+            action="append",
+            help="Select a namespace or OpenShift project to test. Repeat the flag to test several. "
+            "Default: all namespaces",
         )
         parser.add_argument(
             "--output",
@@ -209,6 +243,23 @@ class Kubenumerate:
             default=1,
         )
         parser.add_argument(
+            "--skip-control-plane-review",
+            action="store_true",
+            help="Do not run the namespace/project security review (RBAC, PSA labels, exposure, template drift, "
+            "resource controls, Confluent). Collection coverage is still recorded",
+        )
+        parser.add_argument(
+            "--generate-empty-sheets",
+            action="store_true",
+            help="Write every sheet the run produces, including sheets with no findings. By default an Excel sheet is "
+            "written only when it has findings",
+        )
+        parser.add_argument(
+            "--skip-trivy",
+            action="store_true",
+            help="Do not pull images or run Trivy: no image registry or vulnerability database contact",
+        )
+        parser.add_argument(
             "--skip-summary",
             "-s",
             action="store_true",
@@ -217,6 +268,13 @@ class Kubenumerate:
         parser.add_argument(
             "--summary-output",
             help="Specify the path for the summary Word document. " "Default: {output_dir}/kubenumerate_summary.docx",
+        )
+        parser.add_argument(
+            "--openshift",
+            "-O",
+            action="store_true",
+            help="Audit an OpenShift cluster: use the oc CLI instead of kubectl and add OpenShift checks "
+            "(SecurityContextConstraints, Routes)",
         )
         self.args = parser.parse_args()
 
@@ -296,14 +354,17 @@ class Kubenumerate:
         # if self.kube_bench_bin is None:
         #     self.requisites.append("kube-bench")
 
-        # Kubectl
-        kubectl_path = f"{self.brew_path}/kubectl" if self.brew_path else None
-        if os.path.exists(str(kubectl_path)):
-            self.kubectl_bin = str(kubectl_path)
-        elif shutil.which("kubectl"):
-            self.kubectl_bin = str(shutil.which("kubectl"))
+        # Kubectl (oc when targeting OpenShift, which is a superset of kubectl)
+        if self.openshift:
+            self.kubectl_bin = self.find_oc_bin()
         else:
-            self.kubectl_bin = "kubectl"
+            kubectl_path = f"{self.brew_path}/kubectl" if self.brew_path else None
+            if os.path.exists(str(kubectl_path)):
+                self.kubectl_bin = str(kubectl_path)
+            elif shutil.which("kubectl"):
+                self.kubectl_bin = str(shutil.which("kubectl"))
+            else:
+                self.kubectl_bin = "kubectl"
 
         # Trivy
         trivy_pathfinder: Optional[str] = (
@@ -312,12 +373,13 @@ class Kubenumerate:
 
         if trivy_pathfinder is not None:
             self.trivy_bin = trivy_pathfinder
-        else:
+        elif not getattr(self.args, "skip_trivy", False):
             self.requisites.append("trivy")
 
-        # Kubiscan
-        if not shutil.which("kubiscan"):
-            if not self.find_kubiscan_bin():
+        # KubiScan audits cluster-wide RBAC on a live cluster: namespace-scoped and offline runs do not need it
+        offline = getattr(self.args, "dry_run", False) or getattr(self.args, "files", None)
+        if not offline and not getattr(self.args, "namespaces", None):
+            if not shutil.which("kubiscan") and not self.find_kubiscan_bin():
                 self.requisites.append("kubiscan")
 
         # Wget
@@ -340,6 +402,21 @@ class Kubenumerate:
             self.install_requisites()
         else:
             print(f'{self.green_text("[+]")} All necessary software successfully detected in the system.')
+
+    def find_oc_bin(self) -> str:
+        """Locate the oc CLI required by --openshift. Exit when a live cluster is needed but oc is not installed"""
+
+        oc_path = shutil.which("oc")
+        if oc_path:
+            return oc_path
+        if self.args.dry_run or self.args.files:
+            return "oc"
+        print(
+            f'{self.red_text("[-]")} {self.cyan_text("--openshift")} requires the {self.cyan_text("oc")} CLI, but it was '
+            "not found in your PATH. Download it from https://mirror.openshift.com/pub/openshift-v4/clients/ocp/stable/ "
+            "and run again."
+        )
+        sys.exit(2)
 
     def install_requisites(self) -> None:
         """Check for tools. Offer installing it if they are not present in the system"""
@@ -671,7 +748,7 @@ class Kubenumerate:
                 f'{self.cyan_text("[*]")} --files flag detected. Using existing kubectl output files and '
                 f"forcing --dry-run mode."
             )
-            self.kubectl_output_path = os.path.abspath(self.args.files)
+            self.kubectl_output_path = f"{os.path.abspath(self.args.files)}/"
             self.dry_run = True
             if not os.path.exists(self.kubectl_output_path):
                 os.makedirs(self.kubectl_output_path)
@@ -680,8 +757,18 @@ class Kubenumerate:
                         f'{self.green_text("[+]")} Directory "{self.cyan_text(self.kubectl_output_path)}" created successfully.'
                     )
 
-        if hasattr(self.args, "namespace") and self.args.namespace != "-A":
-            self.namespace = f"-n {self.args.namespace}"
+        if hasattr(self.args, "namespaces") and self.args.namespaces:
+            self.namespaces = self.normalise_namespaces(self.args.namespaces)
+
+        self.skip_review = bool(getattr(self.args, "skip_control_plane_review", False))
+        self.skip_trivy = bool(getattr(self.args, "skip_trivy", False))
+        self.generate_empty_sheets = bool(getattr(self.args, "generate_empty_sheets", False))
+        if self.namespaces is not None:
+            print(
+                f'{self.yellow_text("[!]")} Namespace/project scope: cluster-scoped checks (ClusterRoles, '
+                "ClusterRoleBindings, admission webhooks, nodes, OpenShift SCC definitions and KubiScan) are not run. "
+                "They run only in cluster-wide runs."
+            )
 
         if hasattr(self.args, "dry_run") and self.args.dry_run:
             self.dry_run = True
@@ -853,8 +940,130 @@ class Kubenumerate:
             except json.JSONDecodeError as e:
                 print(f'{self.red_text("[-]")} Failed to parse pods file "{self.cyan_text(self.pods_file)}": {e}')
 
+    def api_resource_names(self, namespaced: bool) -> List[str]:
+        """Names of the API resources the cluster serves, either namespaced or cluster-scoped"""
+        awk_command = "awk '// {print $1}'"
+        scope_flag = str(namespaced).lower()
+        command = f"{self.kubectl_bin} api-resources --namespaced={scope_flag} --no-headers | {awk_command} | sort -u"
+        return subprocess.check_output(command, shell=True).decode().split("\n")[:-1]
+
+    def scopes_for(self, resource: str, namespaced: set[str]) -> List[List[str]]:
+        """kubectl arguments selecting where a resource is fetched from. Cluster-scoped kinds are fetched once with no
+        scope. Namespaced kinds are fetched cluster-wide without --namespace, or once per requested namespace"""
+        if resource not in namespaced:
+            return [[]]
+        if self.namespaces is None:
+            return [["-A"]]
+        return [["-n", namespace] for namespace in dict.fromkeys(self.namespaces)]
+
+    def resources_to_fetch(self, namespaced: set[str], cluster_scoped: set[str]) -> List[str]:
+        """Resource kinds to gather. A namespace-scoped run reads only namespaced kinds: cluster-scoped ones (nodes,
+        ClusterRoles, ...) are cluster-wide data outside the requested namespaces"""
+        if self.namespaces is None:
+            return sorted(namespaced | cluster_scoped)
+        return sorted(namespaced)
+
+    @staticmethod
+    def classify_kubectl_error(stderr: str) -> str:
+        """Why a kubectl call failed, from its stderr: forbidden, unsupported (resource type not served, for example a
+        CRD that is not installed), not found, or failed"""
+        text = stderr.lower()
+        if "forbidden" in text:
+            return "forbidden"
+        if "doesn't have a resource type" in text or "could not find the requested resource" in text:
+            return "unsupported"
+        if "not found" in text:
+            return "not found"
+        return "failed"
+
+    def kubectl_get(self, resource: str, scope: List[str], output_format: str) -> Tuple[Optional[str], Optional[str]]:
+        """Run kubectl get for one resource in one scope. Returns (stdout, None) on success, or (None, reason) when the
+        call fails. A failed scope is never retried in a wider one"""
+        command = [*self.kubectl_bin.split(" "), "get", resource, *scope, "-o", output_format]
+        process = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        if process.returncode != 0:
+            stderr = process.stderr.decode("utf-8").strip()
+            if self.verbosity > 1:
+                print(f'{self.yellow_text("[!]")} `{" ".join(command)}` failed: {stderr}')
+            return None, self.classify_kubectl_error(stderr)
+        return process.stdout.decode("utf-8"), None
+
+    @staticmethod
+    def scope_label(scope: List[str]) -> str:
+        """Name of a kubectl scope in the coverage report"""
+        if not scope:
+            return "cluster-wide"
+        if scope == ["-A"]:
+            return "all namespaces"
+        if scope[0] == "-n":
+            return scope[1]
+        return scope[0]
+
+    def record_coverage(self, scope: List[str], resource: str, status: str, note: str = "") -> None:
+        self.coverage.append({"Scope": self.scope_label(scope), "Resource": resource, "Status": status, "Note": note})
+
+    def is_collected(self, namespace: str, resource: str) -> bool:
+        """Whether the resource was listed for this namespace, cluster-wide or by name. Reused, failed and forbidden
+        requests do not count, so their absence is never reported as a finding"""
+        return any(
+            row["Resource"] == resource
+            and row["Status"] in ("collected", "empty")
+            and row["Scope"] in (namespace, "all namespaces")
+            for row in self.coverage
+        )
+
+    def fetch_selected_namespaces(self) -> None:
+        """Namespace objects are cluster-scoped, so in namespace mode each selected namespace is read by name, one GET
+        per name, to obtain its Pod Security Admission labels. Nothing is listed."""
+        items = []
+        for name in dict.fromkeys(self.namespaces or []):
+            output, error = self.kubectl_get("namespace", [name], "json")
+            if output is not None:
+                items.append(json.loads(output))
+            self.record_coverage([name], "namespaces", error or "collected")
+        with open(f"{self.kubectl_output_path}namespaces.json", "w") as f:
+            f.write(json.dumps({"apiVersion": "v1", "kind": "List", "items": items}, indent=4))
+
+    @staticmethod
+    def normalise_namespaces(values: Optional[List[str]]) -> Optional[List[str]]:
+        """Selected namespaces/projects, or None for a cluster-wide run. Duplicates are dropped, keeping the first"""
+        return list(dict.fromkeys(values)) if values else None
+
+    def scope_identity(self) -> Dict[str, Any]:
+        """What this run collects, recorded so a later run can tell whether reused files match it"""
+        return {
+            "platform": "openshift" if self.openshift else "kubernetes",
+            "mode": "namespace" if self.namespaces is not None else "cluster",
+            "namespaces": sorted(set(self.namespaces)) if self.namespaces is not None else None,
+        }
+
+    def check_scope_marker(self) -> None:
+        """Refuse to reuse collected files unless they were collected for this same scope. Files with no marker have
+        an unknown scope, so they are refused too. A matching run can resume"""
+        marker = f"{self.kubectl_output_path}{SCOPE_MARKER}"
+        current = self.scope_identity()
+        if os.path.exists(marker):
+            with open(marker) as f:
+                recorded = json.load(f)
+            if recorded != current:
+                print(
+                    f'{self.red_text("[-]")} {self.cyan_text(self.kubectl_output_path)} holds files collected for a '
+                    f"different scope (recorded: {recorded}; this run: {current}). Use a new --output directory."
+                )
+                sys.exit(2)
+            return
+        if glob.glob(f"{self.kubectl_output_path}*.json"):
+            print(
+                f'{self.red_text("[-]")} {self.cyan_text(self.kubectl_output_path)} holds files with no scope marker, '
+                "so their scope is unknown. Use a new --output directory."
+            )
+            sys.exit(2)
+        with open(marker, "w") as f:
+            json.dump(current, f, indent=4)
+
     def kubectl_get_all_yaml_and_json(self) -> None:
         """Gather all output from kubectl in both json and yaml"""
+        self.check_scope_marker()
 
         # Check if kubeconfig was passed and adjust commands to include the flag
         if self.args.kubeconfig is not None:
@@ -868,9 +1077,10 @@ class Kubenumerate:
             )
             cluster_version_stdout, cluster_version_stderr = cluster_version_process.communicate()
 
-            self.cluster_version = str(self.extract_version(cluster_version_stdout))
-            with open(f"{self.kubectl_output_path}cluster_version.txt", "w") as f:
-                f.write(self.cluster_version)
+            self.cluster_version = self.extract_version(cluster_version_stdout, openshift=self.openshift)
+            if self.cluster_version:
+                with open(f"{self.kubectl_output_path}cluster_version.txt", "w") as f:
+                    f.write(self.cluster_version)
 
         except Exception as e:
             self.cluster_version = None
@@ -890,9 +1100,13 @@ class Kubenumerate:
                 f"permission to get. Please wait..."
             )
 
-        awk_command = "awk '// {print $1}'"
-        command = f"{self.kubectl_bin} api-resources --no-headers | {awk_command} | sort -u"
-        resources = subprocess.check_output(command, shell=True).decode().split("\n")[:-1]
+        namespaced = set(self.api_resource_names(namespaced=True))
+        cluster_scoped = set(self.api_resource_names(namespaced=False))
+        resources = self.resources_to_fetch(namespaced, cluster_scoped)
+        if self.namespaces is not None:
+            for resource in sorted(cluster_scoped - namespaced):
+                self.record_coverage([], resource, "not assessed", NOT_ASSESSED_CLUSTER_SCOPED)
+            self.record_coverage([], "KubiScan (cluster RBAC audit)", "not assessed", NOT_ASSESSED_CLUSTER_SCOPED)
         total_resources = len(resources)
 
         if total_resources == 0:
@@ -911,6 +1125,8 @@ class Kubenumerate:
                 self.show_status_bar(i + 1, "resources", total_resources, start=start)
                 # Skip if it already exists
                 if os.path.exists(f"{self.kubectl_output_path}{resource}.json"):
+                    for scope in self.scopes_for(resource, namespaced):
+                        self.record_coverage(scope, resource, "reused", "existing output file used, not re-collected")
                     if self.verbosity > 0:
                         print(
                             f'{self.yellow_text("[!]")} "{self.kubectl_output_path}{resource}.json" already exists in the '
@@ -921,20 +1137,23 @@ class Kubenumerate:
                     Path.touch(Path(f"{self.kubectl_output_path}{resource}.json"), 0o644)
                     Path.touch(Path(f"{self.kubectl_output_path}{resource}.yaml"), 0o644)
 
-                    command = f"{self.kubectl_bin} get {resource} {self.namespace} -o json"
-                    process = subprocess.Popen(command.split(" "), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-                    stdout, stderr = process.communicate()
+                    scopes = self.scopes_for(resource, namespaced)
+                    results = [(scope, *self.kubectl_get(resource, scope, "json")) for scope in scopes]
                 except Exception as e:
-                    # If forbidden, don't try to do it with yaml
                     print(
                         f'{self.red_text("[-]")} Error detected while launching `kubectl get '
-                        f"{resource} {self.namespace} -o json`: {e}"
+                        f"{resource} -o json`: {e}"
                     )
+                    for scope in self.scopes_for(resource, namespaced):
+                        self.record_coverage(scope, resource, "failed", str(e))
                     continue
 
-                # Save the output to its own file
-                contents = json.loads(stdout.decode("utf-8"))
-                if not contents["items"]:
+                items: List[Any] = []
+                for scope, output, error in results:
+                    scope_items = json.loads(output).get("items", []) if output is not None else []
+                    items.extend(scope_items)
+                    self.record_coverage(scope, resource, error or ("collected" if scope_items else "empty"))
+                if not items:
                     if self.verbosity > 1:
                         print(
                             f'{self.cyan_text("[*]")} DEBUG (DEV branch): not saving '
@@ -943,32 +1162,31 @@ class Kubenumerate:
                     skipped += 1
                     continue
 
-                Path.touch(Path(f"{self.kubectl_output_path}{resource}.json"), 0o644)
+                # Save the output to its own file, merging every scope into one list
+                contents_str = json.dumps({"apiVersion": "v1", "kind": "List", "items": items}, indent=4)
                 with open(f"{self.kubectl_output_path}{resource}.json", "w") as f:
-                    # Check to avoid creating empty list file
-                    contents_str = json.dumps(contents, indent=4)
                     f.write(contents_str)
 
-                # ... And if still alive, append to the catch-all file for global queries
+                # ... And append to the catch-all file for global queries
                 with open(kubectl_json_file, "+a") as f:
                     f.write(contents_str)
 
-                # ... And repeat with yaml
-                command = f"kubectl get {resource} {self.namespace} -o yaml"
-                process = subprocess.Popen(command.split(" "), stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-                stdout, stderr = process.communicate()
-
-                # Save the output to its own yaml file
-                Path.touch(Path(f"{self.kubectl_output_path}{resource}.yaml"), 0o644)
+                # ... And repeat with yaml, one document per scope that succeeded
+                yaml_docs = [
+                    self.kubectl_get(resource, scope, "yaml")[0] for scope, _, error in results if error is None
+                ]
+                yaml_str = "---\n".join(doc for doc in yaml_docs if doc)
                 with open(f"{self.kubectl_output_path}{resource}.yaml", "w") as f:
-                    f.write(stdout.decode("utf-8"))
+                    f.write(yaml_str)
 
                 # And append to the catch-all file for global queries
                 with open(kubectl_yaml_file, "+a") as f:
-                    f.write(stdout.decode("utf-8"))
+                    f.write(yaml_str)
 
         except ZeroDivisionError:
             print(f'{self.red_text("[-]")} Error: No resources were found. Are you connected to the cluster?\n')
+        if self.namespaces is not None and not self.skip_review:
+            self.fetch_selected_namespaces()
 
         print("\n", flush=True, file=sys.stdout)
         print(
@@ -1025,6 +1243,13 @@ class Kubenumerate:
 
         # Parse args
         self.parse_args()
+        if self.args.openshift:
+            self.openshift = True
+            if self.verbosity > 0:
+                print(
+                    f'{self.cyan_text("[*]")} --openshift flag detected. Using the {self.cyan_text("oc")} CLI and '
+                    f"OpenShift-specific checks."
+                )
 
         # Print banner
         if self.verbosity > 0:
@@ -1071,6 +1296,9 @@ class Kubenumerate:
         # Generate local kubeaudit-equivalent findings from kubectl output
         kubeaudit_df = self.generate_kubeaudit_equivalent_df_from_kubectl()
         self.evaluate_privileged_severity(kubeaudit_df)
+        self.write_run_metadata()
+        if not self.dry_run:  # --files and --dry-run collect nothing, so there is no coverage to record
+            self.write_coverage_markdown()
         # with open(self.kube_bench_file, "r") as kube_bench_f:
         with pd.ExcelWriter(self.excel_file, engine="xlsxwriter", mode="w") as writer:
             # Run all Kubeaudit-equivalent methods
@@ -1089,6 +1317,7 @@ class Kubenumerate:
             self.root_fs(kubeaudit_df, writer)
             self.seccomp(kubeaudit_df, writer)
             self.user_namespace(kubeaudit_df, writer)
+            self.project_checks(kubeaudit_df, writer)
             if self.verbosity > 0:
                 print(f'{self.green_text("[+]")} {self.cyan_text("Kubeaudit-equivalent checks")} successfully parsed.')
             # Run Kube-bench methods
@@ -1099,11 +1328,16 @@ class Kubenumerate:
             # if self.verbosity > 0:
             #     print(f'{self.green_text("[+]")} {self.cyan_text("Kube-bench")} successfully parsed.')
             # Parse all pods for Trivy
-            self.parse_all_pods()
-            # Run Trivy methods
-            vuln_containers = self.trivy_parser(writer)
-            if self.verbosity > 0:
-                print(f'{self.green_text("[+]")} {self.cyan_text("Trivy")} successfully parsed.')
+            vuln_containers = []
+            if self.skip_trivy:
+                if self.verbosity > 0:
+                    print(f'{self.cyan_text("[*]")} --skip-trivy flag detected. Not pulling images or running Trivy.')
+            else:
+                self.parse_all_pods()
+                # Run Trivy methods
+                vuln_containers = self.trivy_parser(writer)
+                if self.verbosity > 0:
+                    print(f'{self.green_text("[+]")} {self.cyan_text("Trivy")} successfully parsed.')
         if self.verbosity >= 0:
             print(f'{self.green_text("[+]")} Done! All output successfully saved to {self.cyan_text(self.excel_file)}.')
 
@@ -1115,7 +1349,14 @@ class Kubenumerate:
                 self.args.summary_output if self.args.summary_output else f"{self.out_path}kubenumerate_summary.docx"
             )
             try:
-                generate_summary_table(kubeaudit_df, vuln_containers, summary_path, self.verbosity)
+                generate_summary_table(
+                    kubeaudit_df,
+                    vuln_containers,
+                    summary_path,
+                    self.verbosity,
+                    review_sections=self.review_sections(),
+                    notes=self.scope_notes(),
+                )
                 if self.verbosity >= 0:
                     print(f'{self.green_text("[+]")} Summary table saved to {self.cyan_text(summary_path)}')
             except Exception as e:
@@ -1131,6 +1372,13 @@ class Kubenumerate:
         self.raise_issues()
 
     def check_roles(self) -> None:
+        # ExtensiveRoleCheck (offline) and KubiScan (live) both audit cluster-wide RBAC, so a namespace run skips them
+        if self.namespaces is not None:
+            print(
+                f'{self.yellow_text("[!]")} Skipping RBAC audits (ExtensiveRoleCheck, KubiScan): they cover cluster-wide '
+                "RBAC, outside the requested namespaces."
+            )
+            return
         if self.dry_run:
             print(
                 f'{self.cyan_text("[*]")} --dry-run flag detected. Using {self.kubectl_output_path} directory to fetch json files'
@@ -1225,7 +1473,7 @@ class Kubenumerate:
         """Check whether the cluster's version is outdated"""
         print(
             f"{self.cyan_text('[*]')} Determining latest version of {self.cyan_text('K8s')} from "
-            f"{self.cyan_text('GitHub')}'s API..."
+            f"{self.cyan_text('the OpenShift mirror' if self.openshift else 'GitHub')}..."
         )
         if not self.cluster_version:
             print(
@@ -1234,23 +1482,41 @@ class Kubenumerate:
             )
             return
 
-        current_latest = self.fetch_latest_kubernetes_version()
-        if current_latest is None:
+        if self.openshift:
+            current_latest = self.fetch_openshift_kubernetes_version()
+            source = "OpenShift's bundled Kubernetes"
+        else:
+            current_latest = self.fetch_latest_kubernetes_version()
+            source = "latest upstream Kubernetes"
+        if current_latest in (None, "error"):
             print(
-                f'{self.red_text("[-]")} This will now default to a hard-coded version ({self.kube_version}). '
-                f'Although the developer tries to maintain {self.cyan_text("Kubenumerate")} updated, you should '
-                f"ensure this version is up-to-date, otherwise you might flag a false positive."
+                f'{self.red_text("[-]")} Could not query {source}. This will now default to a hard-coded version '
+                f"({self.kube_version}). Although the developer tries to maintain {self.cyan_text('Kubenumerate')} "
+                "updated, you should ensure this version is up-to-date, otherwise you might flag a false positive."
             )
         else:
             print(
-                f'{self.green_text("[+]")} Successfully queried latest version of {self.cyan_text("K8s")}: '
-                f'{self.yellow_text(f"{self.kube_version}")}. Comparing against cluster\'s version '
+                f'{self.green_text("[+]")} Successfully queried {source}: '
+                f'{self.yellow_text(f"{current_latest}")}. Comparing against cluster\'s version '
                 f'{self.yellow_text("v" + self.cluster_version)}.'
             )
             self.kube_version = current_latest
 
         if Version(self.cluster_version) < Version(self.kube_version):
             self.version_diff = int(self.kube_version.split(".")[1]) - int(self.cluster_version.split(".")[1])
+
+    def fetch_openshift_kubernetes_version(self) -> Optional[str]:
+        """The Kubernetes version bundled by the latest stable OpenShift release, from the release file the OpenShift
+        mirror publishes. OpenShift ships Kubernetes behind upstream, so upstream's latest is the wrong reference."""
+        url = "https://mirror.openshift.com/pub/openshift-v4/clients/ocp/stable/release.txt"
+        try:
+            response = requests.get(url, timeout=10)
+            response.raise_for_status()
+        except Exception as e:
+            print(f'{self.red_text("[-]")} Error while fetching the OpenShift release file: {e}')
+            return None
+        match = re.search(r"^\s*kubernetes\s+v?(\d+\.\d+\.\d+)", response.text, re.MULTILINE)
+        return match.group(1) if match else None
 
     def fetch_latest_kubernetes_version(self) -> str:
         """Get latest kubernetes version by querying GitHub's API"""
@@ -1284,12 +1550,17 @@ class Kubenumerate:
             return False
 
     @staticmethod
-    def extract_version(version_output: bytes) -> Optional[str]:
-        """Get cluster's version with RegEx even in case it's a weird string"""
+    def extract_version(version_output: bytes, openshift: bool = False) -> Optional[str]:
+        """Get the cluster's Kubernetes version with RegEx even in case it's a weird string.
 
+        `oc version` on OpenShift also reports the OCP release as "Server Version", so the Kubernetes version is read
+        from "Kubernetes Version" in that mode.
+        """
+
+        label = "Kubernetes Version" if openshift else "Server Version"
         server_version = ""
         for line in version_output.decode("UTF-8").splitlines():
-            if "Server Version" in line:
+            if label in line:
                 server_version = line
 
         pattern = r"v?(\d+\.\d+\.\d+)"
@@ -2271,6 +2542,152 @@ class Kubenumerate:
                 print(f'[{self.cyan_text("*")}] "Seccomp - Missing" not detected')
 
     @staticmethod
+    def openshift_findings(item: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """OpenShift-specific checks for one object: SCC admission of pods, permissive SCC definitions and Routes"""
+
+        kind = item.get("kind", "")
+        metadata = item.get("metadata", {})
+        namespace = metadata.get("namespace", "")
+        name = metadata.get("name", "")
+        findings: List[Dict[str, Any]] = []
+
+        def add(audit_name: str, msg: str) -> None:
+            findings.append(
+                {
+                    "AuditResultName": audit_name,
+                    "ResourceNamespace": namespace,
+                    "ResourceKind": kind,
+                    "ResourceName": name,
+                    "msg": msg,
+                }
+            )
+
+        if kind == "Pod":
+            # OpenShift records the SCC that admitted the pod in an annotation
+            scc = metadata.get("annotations", {}).get("openshift.io/scc", "")
+            if scc in OPENSHIFT_PERMISSIVE_SCCS:
+                add(
+                    "OpenShiftPodPermissiveSCC",
+                    f"Pod was admitted under the '{scc}' SCC, which permits elevated privileges such as root UIDs, "
+                    "host namespaces or host paths.",
+                )
+
+        elif kind == "SecurityContextConstraints":
+            host_flags = [
+                flag
+                for flag in ("allowHostNetwork", "allowHostPID", "allowHostIPC", "allowHostDirVolumePlugin")
+                if item.get(flag)
+            ]
+            privileged = bool(item.get("allowPrivilegedContainer"))
+            run_as_any = item.get("runAsUser", {}).get("type") == "RunAsAny"
+            if privileged:
+                add(
+                    "OpenShiftSCCAllowsPrivileged", "SCC allows privileged containers (allowPrivilegedContainer: true)."
+                )
+            if host_flags:
+                add("OpenShiftSCCAllowsHostAccess", f"SCC allows host access: {', '.join(host_flags)}.")
+            if run_as_any:
+                add("OpenShiftSCCRunAsAny", "SCC allows any UID, including root (runAsUser.type: RunAsAny).")
+            broad_subjects = sorted(OPENSHIFT_BROAD_SUBJECTS & set(item.get("groups", []) + item.get("users", [])))
+            if broad_subjects and (privileged or host_flags or run_as_any):
+                add(
+                    "OpenShiftSCCGrantedBroadly",
+                    f"Permissive SCC is granted to {', '.join(broad_subjects)}, so every identity in those groups "
+                    "can run pods with these privileges.",
+                )
+
+        elif kind == "Route":
+            tls = item.get("spec", {}).get("tls")
+            if not tls:
+                add("OpenShiftRouteWithoutTLS", "Route has no spec.tls, so traffic through the router is plain HTTP.")
+            elif tls.get("insecureEdgeTerminationPolicy") == "Allow":
+                add(
+                    "OpenShiftRouteAllowsInsecure",
+                    "Route accepts plain HTTP alongside TLS (insecureEdgeTerminationPolicy: Allow).",
+                )
+
+        return findings
+
+    def review_sections(self) -> List[Tuple[str, str, str, List[str]]]:
+        """Report sections this run produces. Cluster-scoped sections need a cluster-wide run"""
+        return selected_sections(review=not self.skip_review, cluster=self.namespaces is None, openshift=self.openshift)
+
+    def scope_notes(self) -> List[str]:
+        """What this run did not check, shown in the Word report"""
+        notes = []
+        if self.namespaces is not None:
+            notes.append(
+                "Namespace/project scope: cluster-scoped checks (ClusterRoles, ClusterRoleBindings, admission webhooks, "
+                "nodes, OpenShift SCC definitions and KubiScan) were not run. They run only in cluster-wide runs."
+            )
+        if self.skip_review:
+            notes.append("The security review was skipped (--skip-control-plane-review).")
+        if self.skip_trivy:
+            notes.append("Trivy was not run (--skip-trivy): vulnerable images were not checked.")
+        return notes
+
+    def project_checks(self, df: pd.DataFrame, writer: Any) -> None:
+        """One Excel sheet per section that ran in this mode. A section that ran with no findings still gets an empty
+        sheet; a section that cannot run in this mode gets no sheet"""
+        for title, subtitle, sheet_name, audit_names in self.review_sections():
+            section_df = df[df["AuditResultName"].isin(audit_names)][
+                ["AuditResultName", "ResourceNamespace", "ResourceKind", "ResourceName", "msg"]
+            ].copy()
+            section_df["Recommendation"] = section_df["AuditResultName"].map(RECOMMENDATIONS)
+            section_df = section_df.rename(
+                columns={
+                    "AuditResultName": "Check",
+                    "ResourceNamespace": "Resource Namespace",
+                    "ResourceKind": "Resource Kind",
+                    "ResourceName": "Resource Name",
+                    "msg": "Observation",
+                }
+            )
+            self.colour_cells_and_save_to_excel(title, subtitle, sheet_name, section_df, writer)
+
+    def write_coverage_markdown(self) -> None:
+        """Write coverage.md: what this run collected, and what it could not see"""
+        mode = "namespace/project" if self.namespaces is not None else "cluster-wide"
+        scope = f" ({', '.join(self.namespaces)})" if self.namespaces is not None else ""
+        lines = [
+            "# Kubenumerate coverage",
+            "",
+            f"- Generated (UTC): {datetime.now(timezone.utc).isoformat(timespec='seconds')}",
+            f"- Mode: {mode}{scope}",
+            f"- Platform: {'openshift' if self.openshift else 'kubernetes'}",
+            "",
+            "Statuses other than `collected` and `empty` mean the review could not see that data. They are not "
+            "evidence of safety. `reused` means the file from an earlier run was used, not collected in this run.",
+            "",
+            "| Scope | Resource | Status | Note |",
+            "|---|---|---|---|",
+        ]
+        for row in self.coverage:
+            cells = [row["Scope"], row["Resource"], row["Status"], row["Note"]]
+            lines.append("| " + " | ".join(cell.replace("|", "\\|") for cell in cells) + " |")
+        with open(f"{self.out_path}coverage.md", "w") as f:
+            f.write("\n".join(lines) + "\n")
+
+    def write_run_metadata(self) -> None:
+        """Record what this run covered, so a saved report explains its own scope"""
+        statuses: Dict[str, int] = {}
+        for row in self.coverage:
+            statuses[row["Status"]] = statuses.get(row["Status"], 0) + 1
+        metadata = {
+            "tool_version": get_version(),
+            "generated_utc": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            "platform": "openshift" if self.openshift else "kubernetes",
+            "mode": "namespace" if self.namespaces is not None else "cluster",
+            "namespaces": list(dict.fromkeys(self.namespaces)) if self.namespaces is not None else None,
+            "coverage_summary": statuses,
+            "coverage": self.coverage,
+            "control_plane_review": not self.skip_review,
+            "trivy": not self.skip_trivy,
+        }
+        with open(f"{self.out_path}run_metadata.json", "w") as f:
+            json.dump(metadata, f, indent=4)
+
+    @staticmethod
     def show_status_bar(iteration: int, resource: str, count: int, start: float, size: int = 50) -> None:
         """Quick function to show a nice status bar to stdout"""
         x = int(size * iteration / count)
@@ -2641,11 +3058,12 @@ class Kubenumerate:
         with open("test_issues_dict.txt", "w") as f:
             f.write(str(issues_raised))
 
-    # TODO: Minimal improvement: check whether @static works fine here
-    @staticmethod
     def colour_cells_and_save_to_excel(
-        title: str, subtitle: str, sheet_name: str, df: pd.DataFrame, writer: Any
+        self, title: str, subtitle: str, sheet_name: str, df: pd.DataFrame, writer: Any
     ) -> None:
+        """Write one sheet. A sheet with no findings is skipped unless --generate-empty-sheets is set"""
+        if df.empty and not self.generate_empty_sheets:
+            return
         workbook = writer.book
         worksheet = workbook.add_worksheet(sheet_name)
         worksheet.set_zoom(90)
@@ -2760,6 +3178,7 @@ class Kubenumerate:
                 print(f'{self.cyan_text("[*]")} Dry run mode: using {self.trivy_file} as input')
         else:
             resource_files = glob.glob(f"{self.kubectl_output_path}/*.json")
+        all_items: List[Dict[str, Any]] = []
         for resource_file in resource_files:
             # print(f'{self.cyan_text("[*]")} Parsing {resource_file}...')
             if resource_file.endswith("all_output.json") or resource_file.endswith("cluster_version.txt"):
@@ -2769,6 +3188,7 @@ class Kubenumerate:
                     data = json.load(f)
                     # print(f"debug: {data}")
                 items = data.get("items", [])
+                all_items.extend(items)
                 for item in items:
                     kind = item.get("kind", "")
                     # print(f"debug: kind {kind}")
@@ -2799,6 +3219,11 @@ class Kubenumerate:
                                 "msg": f"{kind} uses deprecated API version {api_version}.",
                             }
                         )
+
+                    if self.openshift:
+                        findings.extend(self.openshift_findings(item))
+                    if not self.skip_review:
+                        findings.extend(project_findings(item))
 
                     # Pod-level and template checks
                     pod_spec = spec.get("template", {}).get("spec", spec)  # For controllers, use template.spec
@@ -3183,6 +3608,8 @@ class Kubenumerate:
             except Exception as e:
                 if self.verbosity > 1:
                     print(f"Error parsing {resource_file}: {e}")
+        if not self.skip_review:
+            findings.extend(cross_object_findings(all_items, self.namespaces or [], self.is_collected))
         # Return as DataFrame with expected columns (even if empty)
         columns = [
             "AuditResultName",
